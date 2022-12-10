@@ -61,7 +61,7 @@ class YoloV1(nn.Module):
     
     def _createConvLayers(self,architecture):
         layers = []
-        in_channels = self.in_channels
+        in_channels = self.in_channels # by default 3 (image RGB channels)
         for layer in architecture:
             if type(layer) == tuple:
                 layers += [CNNBlock(in_channels, \
@@ -89,5 +89,5 @@ def test(S=7, B=2, C=20):
     x = torch.randn((2, 3, 448, 448))
     print(model(x).shape)    
 
-test()
+# test()
 
