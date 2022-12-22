@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 def intersection_over_union(boxes_1, boxes_2, box_format="midpoint"):
     """
@@ -33,4 +34,17 @@ def intersection_over_union(boxes_1, boxes_2, box_format="midpoint"):
     intersection_over_union = intersection / union
 
     return intersection_over_union
-     
+
+
+if __name__ == "__main__":
+    a = torch.tensor(2.5 * np.ones((3,4,4)))
+    a[:,:,2:] = 5
+    b = torch.tensor(6 * np.ones((3,4,4)))
+    b[:,:,2:] = 4
+    print("coordinates as x_mid, y_mid, w,h")
+    print(f"a_coordinates check --> {a[0,0]}")
+    print(f"b_coordinates check --> {b[0,0]}")
+    c = intersection_over_union(a,b)
+    # answer should be 1/ (25 + 16 - 1)
+    print(f"Answer should be {torch.tensor(1/ (25 + 16 - 1))}")
+    print(f"Answer: {c[0,0]}")
