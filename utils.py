@@ -36,6 +36,77 @@ def intersection_over_union(boxes_1, boxes_2, box_format="midpoint"):
     return intersection_over_union
 
 
+def non_max_suppression(bboxes, iou_threshold, min_score, box_format="corners"):
+
+    """
+    bboxes -> list of bounding boxes having values
+        [class_index, prob_score, x1,y1, x2, y2]
+        Will be in shape (N,6) (if performed for batches) 
+    iou_threshold -> iou to perform nms
+    min_score -> minimum probability score to consider box for nms
+    box_format -> whether the boxes are in format corners, midpoint, etc.
+
+    #NMS concept
+    1. filter the boxes per class
+    2. for a class, first keep the highest confidence box
+    3. for the same class, remove the boxes having iou > threshold
+    4. From the boxes left, again keep the highest confidence box
+    5. Repeat till no boxes are left to be considered
+    """
+
+    # Reduce the boxes based on minimum score
+
+    bboxes = np.array(bboxes) if type(bboxes) is list else bboxes
+    bboxes = bboxes[bboxes[:,1] > min_score]
+    
+    # Perform NMS
+
+    # Filter by class
+    indices = np.unique(bboxes[:,0])
+
+    out_boxes = np.empty(0)
+    for index in indices:
+        filtered_bboxes = bboxes[bboxes[:,0] == index,1:]
+        scores = filtered_bboxes[:,0]
+        order = scores.argsort()[::-1]
+
+        keep = []
+        
+        x1 = filtered_bboxes[:,1]
+        y1 = filtered_bboxes[:,2]
+        x2 = filtered_bboxes[:,3]
+        y2 = filtered_bboxes[:,4]
+
+        areas = (x2 - x1) * (y2 - y1)
+
+        while order.size > 0:
+            i = order[0]
+            keep.append(i)
+            xx1 = np.maximum(filtered_bboxes[i,1], filtered_bboxes[order[1:],1])
+            yy1 = np.maximum(filtered_bboxes[i,2], filtered_bboxes[order[1:],2])
+            xx2 = np.minimum(filtered_bboxes[i,3], filtered_bboxes[order[1:],3])
+            yy2 = np.minimum(filtered_bboxes[i,4], filtered_bboxes[order[1:],4])
+
+            w = np.maximum(0, (xx2 - xx1 + 1))
+            h = np.maximum(0, (yy2 - yy1 + 1))
+
+            inter = w*h
+
+            ovr = inter / ( areas[i] + areas[order[1:]] - inter )
+
+            order = order[np.where(ovr <= iou_threshold)[0] + 1]
+
+        if len(keep) >= 1:
+            class_indices = np.ones((len(keep), 1)) * float(index)
+            # import pdb; pdb.set_trace()
+
+            out_boxes_per_index = np.concatenate((class_indices, filtered_bboxes[keep]), axis=1)
+
+            # concatenate if out_boxes are present, else
+            out_boxes = np.concatenate((out_boxes, out_boxes_per_index), axis=0) if len(out_boxes)>0 else out_boxes_per_index
+
+    return out_boxes
+
 if __name__ == "__main__":
     a = torch.tensor(2.5 * np.ones((3,4,4)))
     a[:,:,2:] = 5
@@ -48,3 +119,13 @@ if __name__ == "__main__":
     # answer should be 1/ (25 + 16 - 1)
     print(f"Answer should be {torch.tensor(1/ (25 + 16 - 1))}")
     print(f"Answer: {c[0,0]}")
+
+    # Testing NMS
+    nms_bboxes = np.ones((4,6)) * 5
+    nms_bboxes[3,1] = 1
+
+    print(nms_bboxes.shape)
+    ans = non_max_suppression(nms_bboxes, .3 ,3)
+    print(f"Answer: {ans.shape}")
+
+    
