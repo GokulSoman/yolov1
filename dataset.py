@@ -38,6 +38,7 @@ class PascalVOC(torch.utils.data.Dataset):
                     print(test_indices)
         image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0]))
         # image_width, image_height = image.size #Not required
+        #TODO: why keep as np array?
         orig_values = np.array(boxes)
 
         if self.transforms:
@@ -86,8 +87,8 @@ class PascalVOC(torch.utils.data.Dataset):
         # eq 3: x_mid_r = x_mid / image_width
         # Sub 2 and 3 in 1 to get grid_index = floor( x_mid_r * total_no_of_grids) -eq(4)
 
-        # Now in shape column, row
-        grid_indices = orig_values[:,1:3] * self.S
+        # (boxes, 2) where columns are x,y indices
+        grid_indices = (orig_values[:,1:3] * self.S).astype(int)
 
 
         # TO find x_mid w,r,t its corresponding cell
@@ -97,20 +98,24 @@ class PascalVOC(torch.utils.data.Dataset):
         # Sub 6 and 7 in eq 5, x_cell = x_mid_r * no.of.grids - grid_index eq (8)
 
         # Indices changed to Row, column
-        grid_indices = grid_indices[:,[1,0]].astype(int)
+        # grid_indices = grid_indices[:,[1,0]].astype(int)
 
-        xy_cell = orig_values[:,1:3] * self.S - grid_indices[:,[1,0]]
+        xy_cell = orig_values[:,1:3] * self.S - grid_indices
         # print(xy_cell)
 
         # import pdb;pdb.set_trace()
 
         # NP Indexing
+        
+        #TODO: check 4 steps, esp orig_values
+        # col, row -> row, col
+        label_matrix[grid_indices[:,1], grid_indices[:,0], 20] = 1
+        
+        label_matrix[grid_indices[:,1], grid_indices[:,0],21:23] = xy_cell
+        label_matrix[grid_indices[:,1], grid_indices[:, 0 ],23:] = orig_values[:,-2:]
+        import pdb; pdb.set_trace()
 
-
-        label_matrix[grid_indices[:,0], grid_indices[:,1],20] = 1
-        label_matrix[grid_indices[:,0], grid_indices[:,1],21:23] = xy_cell
-        label_matrix[grid_indices[:,0], grid_indices[:,1],23:] = orig_values[:,-2:]
-        label_matrix[grid_indices[:,0], grid_indices[:,1], orig_values[:,0].astype(int) - 1] = 1
+        label_matrix[grid_indices[:,1], grid_indices[:,0], orig_values[:,0].astype(int) - 1] = 1
 
         # for value in orig_values:
         #     i, j = int(self.S * )
@@ -146,7 +151,7 @@ class PascalVOC(torch.utils.data.Dataset):
         image.show()
 
 if __name__ == "__main__":
-    dataset_dir = "/storage/datasets/pascal_voc"
+    dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
     csv_file = osp.join(dataset_dir, "train.csv")
     image_dir = osp.join(dataset_dir, "images")
     label_dir = osp.join(dataset_dir, "labels")
@@ -154,6 +159,7 @@ if __name__ == "__main__":
     # dataset.test_annotations(index=1)
 
     a,b = dataset[0]
+    import pdb; pdb.set_trace()
 
                 
 
