@@ -87,8 +87,8 @@ def non_max_suppression(bboxes, iou_threshold, min_score, box_format="corners"):
             xx2 = np.minimum(filtered_bboxes[i,3], filtered_bboxes[order[1:],3])
             yy2 = np.minimum(filtered_bboxes[i,4], filtered_bboxes[order[1:],4])
 
-            w = np.maximum(0, (xx2 - xx1 + 1))
-            h = np.maximum(0, (yy2 - yy1 + 1))
+            w = np.maximum(0, (xx2 - xx1))
+            h = np.maximum(0, (yy2 - yy1))
 
             inter = w*h
 
