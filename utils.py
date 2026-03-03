@@ -92,9 +92,10 @@ def non_max_suppression(bboxes, iou_threshold, min_score, box_format="corners"):
 
             inter = w*h
 
+            # import pdb; pdb.set_trace()
             ovr = inter / ( areas[i] + areas[order[1:]] - inter )
 
-            order = order[np.where(ovr <= iou_threshold)[0] + 1]
+            order = order[1:][ovr <= iou_threshold]
 
         if len(keep) >= 1:
             class_indices = np.ones((len(keep), 1)) * float(index)
@@ -108,10 +109,10 @@ def non_max_suppression(bboxes, iou_threshold, min_score, box_format="corners"):
     return out_boxes
 
 if __name__ == "__main__":
-    a = torch.tensor(2.5 * np.ones((3,4,4)))
-    a[:,:,2:] = 5
-    b = torch.tensor(6 * np.ones((3,4,4)))
-    b[:,:,2:] = 4
+    a = torch.tensor(2.5 * np.ones((3,4)))
+    a[:,2:] = 5
+    b = torch.tensor(6 * np.ones((3,4)))
+    b[:,2:] = 4
     print("coordinates as x_mid, y_mid, w,h")
     print(f"a_coordinates check --> {a[0,0]}")
     print(f"b_coordinates check --> {b[0,0]}")
@@ -119,13 +120,24 @@ if __name__ == "__main__":
     # answer should be 1/ (25 + 16 - 1)
     print(f"Answer should be {torch.tensor(1/ (25 + 16 - 1))}")
     print(f"Answer: {c[0,0]}")
+    print(f"Answer is matching: {torch.isclose(torch.tensor(1/ (25 + 16 - 1), dtype=c.dtype),  c[0,0])}")
 
     # Testing NMS
-    nms_bboxes = np.ones((4,6)) * 5
-    nms_bboxes[3,1] = 1
+    nms_bboxes = np.ones((5,6)) * 5
+    nms_bboxes[:, 1] = (0.33,0.31,0.04, 0.32,0.32)
+    nms_bboxes[1,2] = 4
+    nms_bboxes[3,2] = 0
+    nms_bboxes[:,-2] = nms_bboxes[:,-4] + 3
+    nms_bboxes[:,-1] = nms_bboxes[:,-3] + 2
+    nms_bboxes[-1] = nms_bboxes[3]
+    nms_bboxes[-1,0] = 4
 
-    print(nms_bboxes.shape)
-    ans = non_max_suppression(nms_bboxes, .3 ,3)
+
+ 
+    print(f"NMS boxes shape: {nms_bboxes.shape}")
+    print(f"NMS boxes input: {nms_bboxes}")
+    ans = non_max_suppression(nms_bboxes, .3 ,.3)
     print(f"Answer: {ans.shape}")
+    print(f"Answer content: {ans}")
 
     
