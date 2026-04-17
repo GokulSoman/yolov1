@@ -4,18 +4,18 @@ import torch
 from PIL import Image, ImageDraw
 import os.path as osp
 from random import randint
-
+from torchvision.transforms import transforms
 test = 0
 
 class PascalVOC(torch.utils.data.Dataset):
-    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, transforms=None) -> None:
+    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None) -> None:
         self.annotations = pd.read_csv(csv_file, header=None)
         self.image_dir = image_dir
         self.label_dir = label_dir
         self.S = grids
         self.B = box_per_cell
         self.C = classes
-        self.transforms = transforms
+        self.c_transforms = c_transforms
     
     def __len__(self):
         return len(self.annotations)
@@ -27,24 +27,28 @@ class PascalVOC(torch.utils.data.Dataset):
             for annotation in annotations_file.readlines():
                 class_index, x_mid_r, y_mid_r, width_r, height_r = [float(value) if float(value)!= int(float(value)) else int(value) for value in annotation.split()]
                 boxes.append([class_index, x_mid_r, y_mid_r, width_r, height_r])
-                if test == 1:
-                    s_values = np.linspace(0,1,self.S, endpoint=False)
-                    test_indices = []
-                    test_i, test_j = 0, 0
-                    for n in range(len(s_values)):
-                        test_j = n if x_mid_r > s_values[n] else test_j
-                        test_i = n if y_mid_r > s_values[n] else test_i
-                    test_indices.append((test_i, test_j))
-                    print(test_indices)
+
+                # finding rightmost and lowermost prediction?? Why??
+                # if test == 1:
+                #     s_values = np.linspace(0,1,self.S, endpoint=False)
+                #     test_indices = []
+                #     test_i, test_j = 0, 0
+                #     for n in range(len(s_values)):
+                #         test_j = n if x_mid_r > s_values[n] else test_j
+                #         test_i = n if y_mid_r > s_values[n] else test_i
+                #     test_indices.append((test_i, test_j))
+                #     print(test_indices)
         image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0]))
         # image_width, image_height = image.size #Not required
         #TODO: why keep as np array?
         orig_values = np.array(boxes)
+        image = transforms.ToTensor()(image)
 
-        if self.transforms:
-            orig_values = torch.tensor(orig_values)
-            image, orig_values = self.transforms(image, orig_values)
-            orig_values.detach().cpu().numpy()
+        if self.c_transforms:
+            pass
+            # orig_values = torch.tensor(orig_values)
+            # image, orig_values = self.transforms(image, orig_values)
+            # orig_values.detach().cpu().numpy()
 
         # boxes = orig_values.copy()
         # # import pdb; pdb.set_trace()
@@ -113,7 +117,7 @@ class PascalVOC(torch.utils.data.Dataset):
         
         label_matrix[grid_indices[:,1], grid_indices[:,0],21:23] = xy_cell
         label_matrix[grid_indices[:,1], grid_indices[:, 0 ],23:] = orig_values[:,-2:]
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
 
         label_matrix[grid_indices[:,1], grid_indices[:,0], orig_values[:,0].astype(int) - 1] = 1
 
@@ -144,10 +148,14 @@ class PascalVOC(torch.utils.data.Dataset):
                 x0,y0 = int(x_mid - (width / 2)), int(y_mid - (height/2))
                 x1,y1 = int(x_mid + (width / 2)), int(y_mid + (height/2))
 
+                # make pixels fit image
+                x0, y0 = max(0,x0), max(0,y0)
+                x1, y1 = min(image_width, x1), min(image_height, y1)
+
                 box = [(x0,y0), (x1,y1)]
                 draw = ImageDraw.Draw(image)
                 draw.rectangle(box, outline="yellow")
-        # import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
         image.show()
 
 if __name__ == "__main__":
@@ -155,8 +163,9 @@ if __name__ == "__main__":
     csv_file = osp.join(dataset_dir, "train.csv")
     image_dir = osp.join(dataset_dir, "images")
     label_dir = osp.join(dataset_dir, "labels")
+    classes_file = osp.join(dataset_dir, "classes.txt")
     dataset = PascalVOC(csv_file, image_dir, label_dir)
-    # dataset.test_annotations(index=1)
+    dataset.test_annotations(index=None)
 
     a,b = dataset[0]
     import pdb; pdb.set_trace()
