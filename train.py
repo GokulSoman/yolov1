@@ -34,4 +34,7 @@ with open("hyperparameters.json", 'r') as hp_file:
 
 print(f"Setting device to {eval(hp_dict["device"])} as GPU is{"" if eval(hp_dict["device"]) == "cuda" else " not"} available")
 hp_dict["device"] = eval(hp_dict["device"])
-print(hp_dict)
+print("Hyperparameters")
+print("-"*50)
+for key,val in hp_dict.items():
+    print(key,":", val)
