@@ -93,6 +93,8 @@ class PascalVOC(torch.utils.data.Dataset):
 
         # (boxes, 2) where columns are x,y indices
         grid_indices = (orig_values[:,1:3] * self.S).astype(int)
+        # if center ever equals image extreme edge (1)
+        grid_indices[grid_indices==self.S] -= 1
 
 
         # TO find x_mid w,r,t its corresponding cell
@@ -114,12 +116,16 @@ class PascalVOC(torch.utils.data.Dataset):
         #TODO: check 4 steps, esp orig_values
         # col, row -> row, col
         label_matrix[grid_indices[:,1], grid_indices[:,0], 20] = 1
+        # label_matrix[grid_indices[:,0], grid_indices[:,1],20] = 1
         
         label_matrix[grid_indices[:,1], grid_indices[:,0],21:23] = xy_cell
         label_matrix[grid_indices[:,1], grid_indices[:, 0 ],23:] = orig_values[:,-2:]
-        # import pdb; pdb.set_trace()
 
-        label_matrix[grid_indices[:,1], grid_indices[:,0], orig_values[:,0].astype(int) - 1] = 1
+        # label_matrix[grid_indices[:,0], grid_indices[:,1],21:23] = xy_cell
+        # label_matrix[grid_indices[:,0], grid_indices[:,1], 23:] = orig_values[:,-2:]
+        # import pdb; pdb.set_trace()
+        # class labels are 0-19, set element to 1 if index == label
+        label_matrix[grid_indices[:,1], grid_indices[:,0], orig_values[:,0].astype(int)] = 1
 
         # for value in orig_values:
         #     i, j = int(self.S * )
