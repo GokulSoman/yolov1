@@ -94,9 +94,9 @@ class YoloV1Loss(nn.Module):
 
         # Sum of Losses
 
-        loss = self.lambda_coord * box_loss
+        loss = (self.lambda_coord * box_loss
         + object_loss
         + self.lambda_noobj * no_object_loss
-        + class_loss
+        + class_loss)
 
         return loss
