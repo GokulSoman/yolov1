@@ -33,22 +33,30 @@ class YoloV1Loss(nn.Module):
 
         ## For Box Coordinates
         #TODO: make suitable for more than 2 boxes
-        box_predictions = exists_box * (
+        box_predictions_initial = exists_box * (
             (1 - best_box) * predictions[..., 21:25]
             + best_box * predictions[..., 26:30]
         )
 
 
-        box_targets = exists_box * target[..., 21:25]
+        box_targets_ini = exists_box * target[..., 21:25]
 
         # Taking root of w,h
 
+        box_predictions_xy = box_predictions_initial[..., :2]
+        box_targets_xy = box_targets_ini[..., :2]
         #TODO: Do not know why 1e-6 is added (machine precision??))
         # Predictions can be negative, hence the extra steps
-        box_predictions[..., 2:4] = torch.sign(box_predictions[..., 2:4]) * torch.sqrt(
-            torch.abs(box_predictions[...,2:4] + 1e-6))
+        box_predictions_wh = torch.sign(box_predictions_initial[..., 2:4]) * torch.sqrt(
+            torch.abs(box_predictions_initial[...,2:4] + 1e-6))
+        
+        # Combine box preds
+        box_predictions = torch.cat((box_predictions_xy, box_predictions_wh), dim=-1)
+
         # Target w,h always positive (ground truth)
-        box_targets[..., 2:4] = torch.sqrt(box_targets[..., 2:4])
+        box_targets_wh = torch.sqrt(box_targets_ini[..., 2:4])
+
+        box_targets = torch.cat((box_targets_xy, box_targets_wh), dim=-1)
 
         #TODO: check whether shape change is actualy required?
         # Shape change from (N, S, S, 4) --> (N * S * S, 4)
