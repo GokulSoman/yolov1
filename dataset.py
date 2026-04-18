@@ -7,6 +7,38 @@ from random import randint
 from torchvision.transforms import transforms
 test = 0
 
+import torchvision.transforms.functional as F
+
+class Letterbox:
+    def __init__(self, size, fill=0):
+        self.target_h, self.target_w = size
+        self.fill = fill  # padding color (0 = black)
+
+    def __call__(self, img):
+        # original size
+        w, h = img.size
+
+        # compute scale (preserve aspect ratio)
+        scale = min(self.target_w / w, self.target_h / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+
+        # resize
+        img = F.resize(img, (new_h, new_w))
+
+        # compute padding
+        pad_w = self.target_w - new_w
+        pad_h = self.target_h - new_h
+
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+
+        # apply padding
+        img = F.pad(img, (pad_left, pad_top, pad_right, pad_bottom), fill=self.fill)
+
+        return img
+
 class PascalVOC(torch.utils.data.Dataset):
     def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None) -> None:
         self.annotations = pd.read_csv(csv_file, header=None)
@@ -15,6 +47,10 @@ class PascalVOC(torch.utils.data.Dataset):
         self.S = grids
         self.B = box_per_cell
         self.C = classes
+        self.transforms = transforms.Compose([
+            Letterbox((448,448)),
+            transforms.ToTensor(),
+        ])
         self.c_transforms = c_transforms
     
     def __len__(self):
@@ -42,7 +78,8 @@ class PascalVOC(torch.utils.data.Dataset):
         # image_width, image_height = image.size #Not required
         #TODO: why keep as np array?
         orig_values = np.array(boxes)
-        image = transforms.ToTensor()(image)
+
+        image = self.transforms(image)
 
         if self.c_transforms:
             pass
@@ -161,7 +198,7 @@ class PascalVOC(torch.utils.data.Dataset):
                 box = [(x0,y0), (x1,y1)]
                 draw = ImageDraw.Draw(image)
                 draw.rectangle(box, outline="yellow")
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         image.show()
 
 if __name__ == "__main__":
@@ -174,7 +211,7 @@ if __name__ == "__main__":
     dataset.test_annotations(index=None)
 
     a,b = dataset[0]
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
                 
 

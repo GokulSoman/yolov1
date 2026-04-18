@@ -57,6 +57,7 @@ class YoloV1(nn.Module):
 
     def forward(self, x):
         x = self.darknet(x)
+        # import pdb;pdb.set_trace()
         return self.fcs(torch.flatten(x, start_dim=1))
     
     def _createConvLayers(self,architecture):

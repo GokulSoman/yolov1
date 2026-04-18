@@ -5,7 +5,7 @@ from utils import intersection_over_union
 class YoloV1Loss(nn.Module):
     def __init__(self, S=7, B=2, C=20):
         super().__init__()
-        self.mse = nn.MSELoss(reduction="sum")
+        self.mse = nn.MSELoss(reduction="mean")
         self.S = S
         self.B = B
         self.C = C
@@ -13,6 +13,8 @@ class YoloV1Loss(nn.Module):
         self.lambda_coord = 5
 
     def forward(self, predictions, target):
+
+        # import pdb;pdb.set_trace()
         predictions = predictions.reshape(-1, self.S, self.S, self.C + self.B * 5)
 
         #TODO: make suitable for more than 2 boxes
@@ -56,24 +58,31 @@ class YoloV1Loss(nn.Module):
         ## For the object predictions
 
         # predictions in shape (N,S,S,1)
+        # these are the best predictions
         object_predictions = exists_box * (
             (1- best_box) * predictions[..., 20].unsqueeze(-1) +
             best_box * predictions[..., 25].unsqueeze(-1)
         )
 
-        # targets in shape (N, S,S,1) -> changed to N*S*S
+        # targets in shape (N, S,S,1) not  changed\
         object_loss = self.mse(torch.flatten(object_predictions),
-                    torch.flatten(exists_box * target[...,20])
+                    torch.flatten(exists_box * target[...,[20]])
         )
 
         ## Loss if no object is present
 
         #TODO: target[...,20] is 0 if no object
-        no_object_loss = self.mse(torch.flatten((1-exists_box) * predictions[..., 20]),
-                    torch.flatten((1-exists_box) * target[..., 20]))
+        # no_object_loss = self.mse(torch.flatten((1-exists_box) * predictions[..., 20]),
+        #             torch.flatten((1-exists_box) * target[..., 20]))
         
-        no_object_loss += self.mse(torch.flatten((1-exists_box) * predictions[..., 25]),
-                    torch.flatten((1-exists_box) * target[..., 20]))
+        # no_object_loss += self.mse(torch.flatten((1-exists_box) * predictions[..., 25]),
+                    # torch.flatten((1-exists_box) * target[..., 20]))
+        
+        # only for best box
+        no_object_loss = self.mse((1-exists_box) * object_predictions, 
+                                  (1-exists_box) * target[..., [20]])
+        # no_object_loss += self.mse((1-exists_box) * predictions[...,[25]], 
+        #                           (1-exists_box) * target[..., [20]])
 
 
         ## Loss for the predicted class classes (classification loss)

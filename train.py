@@ -47,10 +47,59 @@ label_dir = osp.join(dataset_dir, "labels")
 train_csv = osp.join(dataset_dir, "train.csv")
 test_csv = osp.join(dataset_dir, "test.csv")
 
-train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir )
+train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir)
+print(f"Data size: {len(train_data)}")
 
-for i in range(len(train_data)):
-    a,b = train_data[i]
-    print(f"got {i}th train data")
-    if i == 10:
-        break
+train_dl = DataLoader(
+    train_data,
+    batch_size=hp_dict["batch_size"],
+    shuffle=True,
+    num_workers=hp_dict["num_workers"],   # parallel data loading
+    pin_memory=True  # faster GPU transfer
+)
+total_steps = len(train_dl)
+print(f"Number of steps in an epoch: {total_steps}")
+
+model = YoloV1(split_size=7, num_boxes=2, num_classes=20).to(hp_dict["device"])
+loss_fn = YoloV1Loss().to(hp_dict["device"])
+optimizer = optim.SGD(model.parameters(), lr=hp_dict["lr"])
+
+num_epochs = hp_dict["epochs"]
+device = hp_dict["device"]
+steps = len(train_data)
+
+# log
+from torch.utils.tensorboard import SummaryWriter
+
+writer = SummaryWriter()
+
+global_step = 0
+
+epoch_bars = []
+
+if __name__=="__main__":
+    for epoch in range(num_epochs):
+
+        # create new progress bar
+
+        pbar = tqdm(
+            total=total_steps,
+            desc=f"{epoch+1}/{num_epochs}",
+            position=epoch,     # <-- stack downward
+            leave=True          # <-- persist after completion
+        )
+        epoch_bars.append(pbar)
+        for batch_x, batch_y in train_dl:
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.to(device)
+            out = model(batch_x)
+            # import pdb; pdb.set_trace()
+            out = out.reshape(-1, 7,7,30)
+            loss = loss_fn(out, batch_y)
+            # print(f"Loss: {loss.item()}")
+            writer.add_scalar("Loss/train", loss.item(), global_step)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            global_step += 1
+            pbar.update(1)
