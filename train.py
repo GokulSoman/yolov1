@@ -131,9 +131,9 @@ if __name__=="__main__":
             t0 = time.time()
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
-            out = model(batch_x)
-            import pdb; pdb.set_trace()
-            loss = loss_fn(out, batch_y)
+            with torch.autocast(device_type=device, dtype= torch.bfloat16):
+                out = model(batch_x)
+                loss = loss_fn(out, batch_y)
             # import pdb; pdb.set_trace()
             # print(f"Loss: {loss.item()}")
             writer.add_scalar("Loss/train", loss.item(), global_step)
