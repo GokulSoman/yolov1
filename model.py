@@ -57,8 +57,7 @@ class YoloV1(nn.Module):
 
     def forward(self, x):
         x = self.darknet(x)
-        # import pdb;pdb.set_trace()
-        return self.fcs(torch.flatten(x, start_dim=1))
+        return self.fcs(torch.flatten(x, start_dim=1)).view(-1, self.S, self.S, self.C + self.B*5)
     
     def _createConvLayers(self,architecture):
         layers = []
@@ -73,15 +72,15 @@ class YoloV1(nn.Module):
         return nn.Sequential(*layers)
 
     def _create_fcs(self, split_size, num_boxes, num_classes):
-        S = split_size
-        B = num_boxes
-        C = num_classes
+        self.S = split_size
+        self.B = num_boxes
+        self.C = num_classes
         return nn.Sequential(
             nn.Flatten(),
-            nn.Linear(S*S*1024, 4096),
+            nn.Linear(self.S*self.S*1024, 4096),
             nn.Dropout(0.5),
             nn.LeakyReLU(0.1),
-            nn.Linear(4096,S*S*(C+ B*5))
+            nn.Linear(4096,self.S*self.S*(self.C+ self.B*5))
         )
 
 
