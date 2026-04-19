@@ -5,7 +5,7 @@ from utils import intersection_over_union
 class YoloV1Loss(nn.Module):
     def __init__(self, S=7, B=2, C=20):
         super().__init__()
-        self.mse = nn.MSELoss(reduction="mean")
+        self.mse = nn.MSELoss(reduction="none")
         self.S = S
         self.B = B
         self.C = C
@@ -14,7 +14,7 @@ class YoloV1Loss(nn.Module):
 
     def forward(self, predictions, target):
 
-        import pdb;pdb.set_trace()
+        # import pdb;pdb.set_trace()
         predictions = predictions.reshape(-1, self.S, self.S, self.C + self.B * 5)
 
         #TODO: make suitable for more than 2 boxes
@@ -60,8 +60,8 @@ class YoloV1Loss(nn.Module):
 
         #TODO: check whether shape change is actualy required?
         # Shape change from (N, S, S, 4) --> (N * S * S, 4)
-        box_loss = self.mse(torch.flatten(box_predictions, end_dim=-2),
-                            torch.flatten(box_targets, end_dim=-2))
+        box_loss = self.mse(box_predictions,
+                            box_targets).sum(dim=(-1,-2,-3)) # size N
 
         ## For the object predictions
 
@@ -73,18 +73,18 @@ class YoloV1Loss(nn.Module):
         )
 
         # targets in shape (N, S,S,1) not  changed\
-        object_loss = self.mse(torch.flatten(object_predictions),
-                    torch.flatten(exists_box * target[...,[20]])
-        )
+        object_loss = self.mse(object_predictions,
+                    exists_box * target[...,[20]]
+        ).sum(dim=(-1,-2,-3))
 
         ## Loss if no object is present
 
         #TODO: target[...,20] is 0 if no object
-        no_object_loss = self.mse(torch.flatten((1-exists_box) * predictions[..., [20]]),
-                    torch.flatten((1-exists_box) * target[..., [20]]))
+        no_object_loss = self.mse((1-exists_box) * predictions[..., [20]],
+                    (1-exists_box) * target[..., [20]]).sum(dim=(-1,-2,-3))
         
-        no_object_loss += self.mse(torch.flatten((1-exists_box) * predictions[..., [25]]),
-                    torch.flatten((1-exists_box) * target[..., [20]]))
+        no_object_loss += self.mse((1-exists_box) * predictions[..., [25]],
+                    (1-exists_box) * target[..., [20]]).sum(dim=(-1,-2,-3))
         
         # only for best box
         # no_object_loss = self.mse((1-exists_box) * object_predictions, 
@@ -96,15 +96,15 @@ class YoloV1Loss(nn.Module):
         ## Loss for the predicted class classes (classification loss)
         # from (N,S,S,20) -- > (N*S*S, 20)
         class_loss = self.mse(
-            torch.flatten(exists_box * predictions[..., :20], end_dim=-2),
-            torch.flatten(exists_box * target[..., :20], end_dim = -2)
-        )
+            exists_box * predictions[..., :20],
+            exists_box * target[..., :20]
+        ).sum(dim=(-1,-2,-3))
 
         # Sum of Losses
 
         loss = (self.lambda_coord * box_loss
         + object_loss
         + self.lambda_noobj * no_object_loss
-        + class_loss)
+        + class_loss).mean()
 
         return loss
