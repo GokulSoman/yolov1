@@ -48,7 +48,7 @@ class YoloV1Loss(nn.Module):
         #TODO: Do not know why 1e-6 is added (machine precision??))
         # Predictions can be negative, hence the extra steps
         box_predictions_wh = torch.sign(box_predictions_initial[..., 2:4]) * torch.sqrt(
-            torch.abs(box_predictions_initial[...,2:4]) + + 1e-6)
+            torch.abs(box_predictions_initial[...,2:4]) + 1e-6)
         
         # Combine box preds
         box_predictions = torch.cat((box_predictions_xy, box_predictions_wh), dim=-1)

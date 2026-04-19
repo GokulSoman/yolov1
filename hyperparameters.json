@@ -2,7 +2,7 @@
     "lr": 2e-5,
     "batch_size": 20,
     "weight_decay": 0,
-    "epochs": 50,
+    "epochs": 1,
     "num_workers": 4,
     "pin_memory": "True",
     "device": "'cuda' if torch.cuda.is_available() else 'cpu'",
