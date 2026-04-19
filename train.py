@@ -95,36 +95,38 @@ writer = SummaryWriter()
 global_step = 0
 
 epoch_bars = []
+import time
 
 if __name__=="__main__":
     curr_test_loss = torch.inf
 
-    epoch_pbar = tqdm(
-            total=num_epochs,
-            desc=f"{"Training progress"}",
-            position=0,     # <-- stack downward
-            leave=True,         # <-- persist after completion
-            mininterval=0.5
-        )
-    epoch_bars.append(epoch_pbar)
+    # epoch_pbar = tqdm(
+    #         total=num_epochs,
+    #         desc=f"{"Training progress"}",
+    #         position=0,     # <-- stack downward
+    #         leave=True,         # <-- persist after completion
+    #         mininterval=0.5
+    #     )
+    # epoch_bars.append(epoch_pbar)
 
     for epoch in range(num_epochs):
 
         # create new progress bar
 
-        pbar = tqdm(
-            total=total_steps,
-            desc=f"{epoch+1}/{num_epochs}",
-            position=epoch+1,     # <-- stack downward
-            leave=True,          # <-- persist after completion
-            mininterval=0.5
-        )
-        epoch_bars.append(pbar)
+        # pbar = tqdm(
+        #     total=total_steps,
+        #     desc=f"{epoch+1}/{num_epochs}",
+        #     position=epoch+1,     # <-- stack downward
+        #     leave=True,          # <-- persist after completion
+        #     mininterval=0.5
+        # )
+        # epoch_bars.append(pbar)
+
         for batch_x, batch_y in train_dl:
+            t0 = time.time()
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             out = model(batch_x)
-            import pdb; pdb.set_trace()
             out = out.reshape(-1, 7,7,30)
             loss = loss_fn(out, batch_y)
             # print(f"Loss: {loss.item()}")
@@ -132,12 +134,20 @@ if __name__=="__main__":
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
+            torch.cuda.synchronize()
+            t1 = time.time()
+            dt = (t1-t0)*1000
+            im_sec = hp_dict["batch_size"]*1000/dt
+            print(f"step: {global_step}, loss: {loss.item():.4f}, dt: {dt:.3f}ms, im_sec: {im_sec}")
             global_step += 1
-            pbar.set_postfix(loss=f"{loss.item():.4f}")
-            pbar.update(1)
+            # pbar.set_postfix(loss=f"{loss.item():.4f}")
+            # pbar.update(1)
+            if global_step == 50:
+                break
 
         # test step
-        if epoch % 10 == 0:
+        if (epoch+1) % 10 == 0:
             model.eval()
             with torch.no_grad():
                 test_loss = []
