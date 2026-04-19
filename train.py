@@ -118,7 +118,7 @@ if __name__=="__main__":
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             out = model(batch_x)
-            # import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
             out = out.reshape(-1, 7,7,30)
             loss = loss_fn(out, batch_y)
             # print(f"Loss: {loss.item()}")
@@ -146,7 +146,7 @@ if __name__=="__main__":
                 test_loss = torch.tensor(test_loss).mean()
             writer.add_scalar("Loss/test", test_loss.item(), global_step)
             if test_loss < curr_test_loss:
-                loss_underscored = "_".join(f"test_loss.item():.3f".split('.'))
+                loss_underscored = "_".join(f"{test_loss.item():.3f}".split('.'))
                 torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
                 curr_test_loss = test_loss
             model.train()
