@@ -47,6 +47,12 @@ label_dir = osp.join(dataset_dir, "labels")
 train_csv = osp.join(dataset_dir, "train.csv")
 test_csv = osp.join(dataset_dir, "test.csv")
 
+# set deterministic runs
+torch.manual_seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(42)
+
+
 train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir)
 test_data = PascalVOC(csv_file=test_csv, image_dir=img_dir, label_dir=label_dir)
 # print(f"Train data size: {len(train_data)}")
