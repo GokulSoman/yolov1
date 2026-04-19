@@ -77,7 +77,7 @@ class PascalVOC(torch.utils.data.Dataset):
         image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0]))
         # image_width, image_height = image.size #Not required
         #TODO: why keep as np array?
-        orig_values = np.array(boxes)
+        orig_values = np.array(boxes, dtype=np.float32)
 
         image = self.transforms(image)
 
@@ -121,7 +121,7 @@ class PascalVOC(torch.utils.data.Dataset):
         
     
         # The label is provided as a matrix, with each cell consisting of the 20 class scores, presence of an object, and the bounding box values
-        label_matrix = np.zeros((self.S, self.S, self.C + 5 ))
+        label_matrix = np.zeros((self.S, self.S, self.C + 5 ), dtype=np.float32)
 
         # eq 1: grid_index = floor( x_mid / grid_size ) as integer
         # eq 2: grid_size = image_width/ total_no_of_grids
@@ -210,6 +210,7 @@ if __name__ == "__main__":
     dataset = PascalVOC(csv_file, image_dir, label_dir)
     dataset.test_annotations(index=None)
 
+    # import pdb; pdb.set_trace()
     a,b = dataset[0]
     # import pdb; pdb.set_trace()
 
