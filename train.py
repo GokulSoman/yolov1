@@ -85,6 +85,8 @@ test_total_steps = len(test_dl)
 # print(f"Number of steps in an epoch: {test_total_steps}")
 
 model = YoloV1(split_size=7, num_boxes=2, num_classes=20).to(hp_dict["device"])
+model = torch.compile(model)
+
 loss_fn = YoloV1Loss().to(hp_dict["device"])
 optimizer = optim.SGD(model.parameters(), lr=hp_dict["lr"])
 
