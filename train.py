@@ -88,6 +88,8 @@ model = YoloV1(split_size=7, num_boxes=2, num_classes=20).to(hp_dict["device"])
 model = torch.compile(model)
 
 loss_fn = YoloV1Loss().to(hp_dict["device"])
+loss_fn = torch.compile(loss_fn)
+
 optimizer = optim.SGD(model.parameters(), lr=hp_dict["lr"])
 
 num_epochs = hp_dict["epochs"]
