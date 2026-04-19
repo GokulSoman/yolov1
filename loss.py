@@ -14,7 +14,7 @@ class YoloV1Loss(nn.Module):
 
     def forward(self, predictions, target):
 
-        # import pdb;pdb.set_trace()
+        import pdb;pdb.set_trace()
         predictions = predictions.reshape(-1, self.S, self.S, self.C + self.B * 5)
 
         #TODO: make suitable for more than 2 boxes
@@ -22,9 +22,9 @@ class YoloV1Loss(nn.Module):
         # There exists only one target, hence the same indices for target
         iou_b2 = intersection_over_union(predictions[..., 26:30], target[..., 21:25])
         
-        ious = torch.cat([iou_b1.unsqueeze(0), iou_b2.unsqueeze(0)], dim=0)
+        ious = torch.cat([iou_b1, iou_b2], dim=-1)
 
-        iou_maxes, best_box = torch.max(ious, dim=0)
+        _, best_box = torch.max(ious, dim=-1, keepdim=True)
 
         # unsqueeze is done to keep dimensions similar
         exists_box = target[..., 20].unsqueeze(3) # identity of obj i (0 or 1)
