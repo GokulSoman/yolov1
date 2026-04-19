@@ -53,6 +53,11 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed(42)
 
 
+# set lower precision (tf32)
+
+torch.set_float32_matmul_precision("high")
+
+
 train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir)
 test_data = PascalVOC(csv_file=test_csv, image_dir=img_dir, label_dir=label_dir)
 # print(f"Train data size: {len(train_data)}")
