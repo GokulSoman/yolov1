@@ -34,12 +34,12 @@ with open("hyperparameters.json", 'r') as hp_file:
     hp_dict = json.load(hp_file)
 
 
-print(f"Setting device to {eval(hp_dict["device"])} as GPU is{"" if eval(hp_dict["device"]) == "cuda" else " not"} available")
+# print(f"Setting device to {eval(hp_dict["device"])} as GPU is{"" if eval(hp_dict["device"]) == "cuda" else " not"} available")
 hp_dict["device"] = eval(hp_dict["device"])
-print("Hyperparameters")
-print("-"*50)
-for key,val in hp_dict.items():
-    print(key,":", val)
+# print("Hyperparameters")
+# print("-"*50)
+# for key,val in hp_dict.items():
+#     print(key,":", val)
 
 dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
 img_dir = osp.join(dataset_dir, "images")
@@ -49,8 +49,8 @@ test_csv = osp.join(dataset_dir, "test.csv")
 
 train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir)
 test_data = PascalVOC(csv_file=test_csv, image_dir=img_dir, label_dir=label_dir)
-print(f"Train data size: {len(train_data)}")
-print(f"Test data size: {len(test_data)}")
+# print(f"Train data size: {len(train_data)}")
+# print(f"Test data size: {len(test_data)}")
 
 
 train_dl = DataLoader(
@@ -61,7 +61,7 @@ train_dl = DataLoader(
     pin_memory=True  # faster GPU transfer
 )
 total_steps = len(train_dl)
-print(f"Number of steps in an epoch: {total_steps}")
+# print(f"Number of steps in an epoch: {total_steps}")
 
 test_dl = DataLoader(
     test_data,
@@ -71,7 +71,7 @@ test_dl = DataLoader(
     pin_memory=True  # faster GPU transfer
 )
 test_total_steps = len(test_dl)
-print(f"Number of steps in an epoch: {test_total_steps}")
+# print(f"Number of steps in an epoch: {test_total_steps}")
 
 model = YoloV1(split_size=7, num_boxes=2, num_classes=20).to(hp_dict["device"])
 loss_fn = YoloV1Loss().to(hp_dict["device"])
@@ -93,6 +93,15 @@ epoch_bars = []
 if __name__=="__main__":
     curr_test_loss = torch.inf
 
+    epoch_pbar = tqdm(
+            total=num_epochs,
+            desc=f"{"Training progress"}",
+            position=0,     # <-- stack downward
+            leave=True,         # <-- persist after completion
+            mininterval=0.5
+        )
+    epoch_bars.append(epoch_pbar)
+
     for epoch in range(num_epochs):
 
         # create new progress bar
@@ -100,8 +109,9 @@ if __name__=="__main__":
         pbar = tqdm(
             total=total_steps,
             desc=f"{epoch+1}/{num_epochs}",
-            position=epoch,     # <-- stack downward
-            leave=True          # <-- persist after completion
+            position=epoch+1,     # <-- stack downward
+            leave=True,          # <-- persist after completion
+            mininterval=0.5
         )
         epoch_bars.append(pbar)
         for batch_x, batch_y in train_dl:
@@ -117,6 +127,7 @@ if __name__=="__main__":
             loss.backward()
             optimizer.step()
             global_step += 1
+            pbar.set_postfix(loss=f"{loss.item():.4f}")
             pbar.update(1)
 
         # test step
