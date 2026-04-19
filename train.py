@@ -48,7 +48,10 @@ train_csv = osp.join(dataset_dir, "train.csv")
 test_csv = osp.join(dataset_dir, "test.csv")
 
 train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir)
-print(f"Data size: {len(train_data)}")
+test_data = PascalVOC(csv_file=test_csv, image_dir=img_dir, label_dir=label_dir)
+print(f"Train data size: {len(train_data)}")
+print(f"Test data size: {len(test_data)}")
+
 
 train_dl = DataLoader(
     train_data,
@@ -59,6 +62,16 @@ train_dl = DataLoader(
 )
 total_steps = len(train_dl)
 print(f"Number of steps in an epoch: {total_steps}")
+
+test_dl = DataLoader(
+    test_data,
+    batch_size=hp_dict["batch_size"],
+    shuffle=True,
+    num_workers=hp_dict["num_workers"],   # parallel data loading
+    pin_memory=True  # faster GPU transfer
+)
+test_total_steps = len(test_data)
+print(f"Number of steps in an epoch: {test_total_steps}")
 
 model = YoloV1(split_size=7, num_boxes=2, num_classes=20).to(hp_dict["device"])
 loss_fn = YoloV1Loss().to(hp_dict["device"])
@@ -79,6 +92,7 @@ epoch_bars = []
 
 if __name__=="__main__":
     for epoch in range(num_epochs):
+        curr_test_loss = torch.inf
 
         # create new progress bar
 
@@ -103,3 +117,23 @@ if __name__=="__main__":
             optimizer.step()
             global_step += 1
             pbar.update(1)
+
+        # test step
+        if epoch % 10 == 0:
+            model.eval()
+            with torch.no_grad():
+                test_loss = []
+                for batch_x, batch_y in test_dl:
+                    batch_x = batch_x.to(device)
+                    batch_y = batch_y.to(device)
+                    out = model(batch_x)
+                    # import pdb; pdb.set_trace()
+                    out = out.reshape(-1, 7,7,30)
+                    loss = loss_fn(out, batch_y)
+                    test_loss.append(loss)
+            test_loss = torch.tensor(test_loss).mean().item()
+            writer.add_scalar("Loss/test", test_loss, global_step)
+            if test_loss < test_loss:
+                loss_underscored = "_".join(f"test_loss:.3f".split('.'))
+                torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
+            model.train()

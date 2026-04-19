@@ -80,15 +80,15 @@ class YoloV1Loss(nn.Module):
         ## Loss if no object is present
 
         #TODO: target[...,20] is 0 if no object
-        # no_object_loss = self.mse(torch.flatten((1-exists_box) * predictions[..., 20]),
-        #             torch.flatten((1-exists_box) * target[..., 20]))
+        no_object_loss = self.mse(torch.flatten((1-exists_box) * predictions[..., [20]]),
+                    torch.flatten((1-exists_box) * target[..., [20]]))
         
-        # no_object_loss += self.mse(torch.flatten((1-exists_box) * predictions[..., 25]),
-                    # torch.flatten((1-exists_box) * target[..., 20]))
+        no_object_loss += self.mse(torch.flatten((1-exists_box) * predictions[..., [25]]),
+                    torch.flatten((1-exists_box) * target[..., [20]]))
         
         # only for best box
-        no_object_loss = self.mse((1-exists_box) * object_predictions, 
-                                  (1-exists_box) * target[..., [20]])
+        # no_object_loss = self.mse((1-exists_box) * object_predictions, 
+        #                           (1-exists_box) * target[..., [20]])
         # no_object_loss += self.mse((1-exists_box) * predictions[...,[25]], 
         #                           (1-exists_box) * target[..., [20]])
 
