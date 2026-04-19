@@ -70,7 +70,7 @@ test_dl = DataLoader(
     num_workers=hp_dict["num_workers"],   # parallel data loading
     pin_memory=True  # faster GPU transfer
 )
-test_total_steps = len(test_data)
+test_total_steps = len(test_dl)
 print(f"Number of steps in an epoch: {test_total_steps}")
 
 model = YoloV1(split_size=7, num_boxes=2, num_classes=20).to(hp_dict["device"])
@@ -91,8 +91,9 @@ global_step = 0
 epoch_bars = []
 
 if __name__=="__main__":
+    curr_test_loss = torch.inf
+
     for epoch in range(num_epochs):
-        curr_test_loss = torch.inf
 
         # create new progress bar
 
@@ -131,9 +132,10 @@ if __name__=="__main__":
                     out = out.reshape(-1, 7,7,30)
                     loss = loss_fn(out, batch_y)
                     test_loss.append(loss)
-            test_loss = torch.tensor(test_loss).mean().item()
-            writer.add_scalar("Loss/test", test_loss, global_step)
-            if test_loss < test_loss:
-                loss_underscored = "_".join(f"test_loss:.3f".split('.'))
+                test_loss = torch.tensor(test_loss).mean()
+            writer.add_scalar("Loss/test", test_loss.item(), global_step)
+            if test_loss < curr_test_loss:
+                loss_underscored = "_".join(f"test_loss.item():.3f".split('.'))
                 torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
+                curr_test_loss = test_loss
             model.train()
