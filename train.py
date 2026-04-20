@@ -11,6 +11,8 @@ from  model import YoloV1
 
 import os.path as osp
 
+import wandb
+
 from dataset import PascalVOC
 # from utils import(
 #     intersection_over_union,
@@ -34,8 +36,16 @@ with open("hyperparameters.json", 'r') as hp_file:
     hp_dict = json.load(hp_file)
 
 
+
+
 # print(f"Setting device to {eval(hp_dict["device"])} as GPU is{"" if eval(hp_dict["device"]) == "cuda" else " not"} available")
-hp_dict["device"] = eval(hp_dict["device"])
+# hp_dict["device"] = eval(hp_dict["device"])
+if hp_dict["device"] == "cuda"and not torch.cuda.is_available():
+    print("Cuda not available: switching to cpu")
+    hp_dict["device"] = "cpu"
+    if hp_dict["batch_size"] > 16:
+        print("[WARN]: Possible crash. running cpu with batchsize > 16")
+
 # print("Hyperparameters")
 # print("-"*50)
 # for key,val in hp_dict.items():
@@ -106,7 +116,20 @@ global_step = 0
 epoch_bars = []
 import time
 
+
+
 if __name__=="__main__":
+
+    # Start a new wandb run to track this script.
+    run = wandb.init(
+        # Set the wandb entity where your project will be logged (generally your team name).
+        entity="gokulsoman",
+        # Set the wandb project where this run will be logged.
+        project="yolov1",
+        # Track hyperparameters and run metadata.
+        config=hp_dict,
+    )
+
     curr_test_loss = torch.inf
 
     # epoch_pbar = tqdm(
@@ -140,16 +163,20 @@ if __name__=="__main__":
                 loss = loss_fn(out, batch_y)
             # import pdb; pdb.set_trace()
             # print(f"Loss: {loss.item()}")
-            writer.add_scalar("Loss/train", loss.item(), global_step)
+            
             optimizer.zero_grad()
             loss.backward()
+
+            norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
             torch.cuda.synchronize()
             t1 = time.time()
             dt = (t1-t0)*1000
             im_sec = hp_dict["batch_size"]*1000/dt
-            print(f"step: {global_step}, loss: {loss.item():.4f}, dt: {dt:.3f}ms, im_sec: {im_sec}")
+            print(f"step: {global_step:4d}, loss: {loss.item():.4f}, norm: {norm:.4f}, dt: {dt:.3f}ms, im_sec: {im_sec}")
+            writer.add_scalar("Loss/train", loss.item(), global_step)
+            run.log({"loss/train": loss.item()})
             global_step += 1
             # pbar.set_postfix(loss=f"{loss.item():.4f}")
             # pbar.update(1)
@@ -176,3 +203,5 @@ if __name__=="__main__":
                 torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
                 curr_test_loss = test_loss
             model.train()
+
+    run.finish()

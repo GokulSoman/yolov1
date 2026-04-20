@@ -5,6 +5,5 @@
     "epochs": 1,
     "num_workers": 4,
     "pin_memory": "True",
-    "device": "'cuda' if torch.cuda.is_available() else 'cpu'",
-    "_comment" : "set device as 'cuda' if torch.cuda.is_available() else 'cpu' "
+    "device": "cuda"
 }
