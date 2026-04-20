@@ -29,13 +29,18 @@ from loss import YoloV1Loss
 
 import json
 
+dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
+img_dir = osp.join(dataset_dir, "images")
+label_dir = osp.join(dataset_dir, "labels")
+train_csv = osp.join(dataset_dir, "train.csv")
+test_csv = osp.join(dataset_dir, "test.csv")
+
+
 seed = 123
 torch.manual_seed(seed=seed)
 
 with open("hyperparameters.json", 'r') as hp_file:
     hp_dict = json.load(hp_file)
-
-
 
 
 # print(f"Setting device to {eval(hp_dict["device"])} as GPU is{"" if eval(hp_dict["device"]) == "cuda" else " not"} available")
@@ -51,11 +56,6 @@ if hp_dict["device"] == "cuda"and not torch.cuda.is_available():
 # for key,val in hp_dict.items():
 #     print(key,":", val)
 
-dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
-img_dir = osp.join(dataset_dir, "images")
-label_dir = osp.join(dataset_dir, "labels")
-train_csv = osp.join(dataset_dir, "train.csv")
-test_csv = osp.join(dataset_dir, "test.csv")
 
 # set deterministic runs
 torch.manual_seed(42)
@@ -81,8 +81,8 @@ train_dl = DataLoader(
     num_workers=hp_dict["num_workers"],   # parallel data loading
     pin_memory=True  # faster GPU transfer
 )
-total_steps = len(train_dl)
-# print(f"Number of steps in an epoch: {total_steps}")
+tr_total_steps = len(train_dl)
+# print(f"Number of steps in an epoch: {tr_total_steps}")
 
 test_dl = DataLoader(
     test_data,
@@ -117,8 +117,23 @@ global_step = 0
 
 epoch_bars = []
 import time
+import math
 
-
+def get_decay_lr(config, steps_per_epoch, step):
+    min_lr = config["min_lr"]
+    max_lr = config["max_lr"]
+    warm_up_epochs = config["warm_up_epochs"]
+    saturate_epochs = config["saturate_epochs"]
+    warm_up_steps = steps_per_epoch * warm_up_epochs
+    saturate_steps = steps_per_epoch * saturate_epochs
+    if step < warm_up_steps:
+        return max_lr * (step + 1) / warm_up_steps
+    if step > saturate_steps:
+        return min_lr
+    
+    decay_ratio = (step - warm_up_steps) / (saturate_steps - warm_up_steps)
+    coeff = 0.5 * (1 + math.cos(math.pi * decay_ratio))
+    return min_lr + coeff * (max_lr - min_lr)
 
 if __name__=="__main__":
 
@@ -148,7 +163,7 @@ if __name__=="__main__":
         # create new progress bar
 
         # pbar = tqdm(
-        #     total=total_steps,
+        #     total=tr_total_steps,
         #     desc=f"{epoch+1}/{num_epochs}",
         #     position=epoch+1,     # <-- stack downward
         #     leave=True,          # <-- persist after completion
@@ -158,6 +173,12 @@ if __name__=="__main__":
 
         for batch_x, batch_y in train_dl:
             t0 = time.time()
+
+            # set learning rate
+            lr = get_decay_lr(hp_dict, tr_total_steps, global_step)
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
+
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             with torch.autocast(device_type=device, dtype= torch.bfloat16):
@@ -176,33 +197,48 @@ if __name__=="__main__":
             t1 = time.time()
             dt = (t1-t0)*1000
             im_sec = hp_dict["batch_size"]*1000/dt
-            print(f"step: {global_step:4d}, loss: {loss.item():.4f}, norm: {norm:.4f}, dt: {dt:.3f}ms, im_sec: {im_sec}")
+            print(f"step: {global_step:4d}, lr: {lr:.5f}, loss: {loss.item():.4f}, norm: {norm:.4f}, dt: {dt:.3f}ms, im_sec: {im_sec}")
             writer.add_scalar("Loss/train", loss.item(), global_step)
-            run.log({"loss/train": loss.item()})
+            run.log({"loss/train": loss.item(), "lr": lr, "step/train" : global_step, "norm": norm, "iter_ms/train" : dt, "im_sec/train": im_sec})
             global_step += 1
             # pbar.set_postfix(loss=f"{loss.item():.4f}")
             # pbar.update(1)
-            if global_step == 50:
-                break
+            # if global_step == 50:
+            #     break
 
         # test step
         if (epoch+1) % 10 == 0:
+            test_loss = 0.0
+            dt = 0.0
+            im_sec = 0.0
             model.eval()
             with torch.no_grad():
-                test_loss = []
                 for batch_x, batch_y in test_dl:
+                    t0 = time.time()
                     batch_x = batch_x.to(device)
                     batch_y = batch_y.to(device)
-                    out = model(batch_x)
-                    # import pdb; pdb.set_trace()
-                    out = out.reshape(-1, 7,7,30)
-                    loss = loss_fn(out, batch_y)
-                    test_loss.append(loss)
-                test_loss = torch.tensor(test_loss).mean()
-            writer.add_scalar("Loss/test", test_loss.item(), global_step)
+                    with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                        out = model(batch_x)
+                        loss = loss_fn(out, batch_y)
+                    test_loss += loss.item()
+                    torch.cuda.synchronize()
+                    t1 = time.time()
+                    dt+= (t1-t0)*1000
+                    im_sec += hp_dict["batch_size"]*1000/dt
+            test_loss /= test_total_steps
+            dt /= test_total_steps
+            im_sec /= test_total_steps
+            writer.add_scalar("Loss/test", test_loss, global_step-1)
+            run.log({"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec})
             if test_loss < curr_test_loss:
-                loss_underscored = "_".join(f"{test_loss.item():.3f}".split('.'))
-                torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
+                loss_underscored = "_".join(f"{test_loss:.3f}".split('.'))
+                # torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
+                torch.save({
+                    "epoch": epoch,
+                    "model_state": model.state_dict(),
+                    "optimizer_state": optimizer.state_dict(),
+                    "loss": test_loss
+                }, f"model_e{epoch}_loss_{loss_underscored}.pth")
                 curr_test_loss = test_loss
             model.train()
 
