@@ -102,7 +102,8 @@ if hp_dict["compile"] == True:
     model = torch.compile(model)
     loss_fn = torch.compile(loss_fn)
 
-optimizer = optim.SGD(model.parameters(), lr=hp_dict["lr"], fused=True)
+optimizer = optim.AdamW(model.parameters(), lr=hp_dict["lr"],fused=hp_dict["fused"],
+                        weight_decay=hp_dict["weight_decay"])
 
 num_epochs = hp_dict["epochs"]
 device = hp_dict["device"]
@@ -196,10 +197,17 @@ if __name__=="__main__":
             torch.cuda.synchronize()
             t1 = time.time()
             dt = (t1-t0)*1000
-            im_sec = hp_dict["batch_size"]*1000/dt
+            im_sec = batch_y.shape[0]*1000/dt
             print(f"step: {global_step:4d}, lr: {lr:.5f}, loss: {loss.item():.4f}, norm: {norm:.4f}, dt: {dt:.3f}ms, im_sec: {im_sec}")
-            writer.add_scalar("Loss/train", loss.item(), global_step)
-            run.log({"loss/train": loss.item(), "lr": lr, "step/train" : global_step, "norm": norm, "iter_ms/train" : dt, "im_sec/train": im_sec})
+            log_train = {"loss/train": loss.item(), 
+                        "lr": lr, 
+                        "step/train" : global_step, 
+                        "norm": norm, 
+                        "iter_ms/train" : dt, 
+                        "im_sec/train": im_sec}
+            for k,v in log_train:
+                writer.add_scalar(k, v, global_step)
+            run.log(log_train)
             global_step += 1
             # pbar.set_postfix(loss=f"{loss.item():.4f}")
             # pbar.update(1)
@@ -224,12 +232,14 @@ if __name__=="__main__":
                     torch.cuda.synchronize()
                     t1 = time.time()
                     dt+= (t1-t0)*1000
-                    im_sec += hp_dict["batch_size"]*1000/dt
+                    im_sec += batch_y.shape[0]*1000/dt
             test_loss /= test_total_steps
             dt /= test_total_steps
             im_sec /= test_total_steps
-            writer.add_scalar("Loss/test", test_loss, global_step-1)
-            run.log({"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec})
+            log_test = {"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec}
+            for k,v in log_test:
+                writer.add_scalar(k, v, global_step-1)
+            run.log(log_test)
             if test_loss < curr_test_loss:
                 loss_underscored = "_".join(f"{test_loss:.3f}".split('.'))
                 # torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
