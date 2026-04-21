@@ -102,7 +102,7 @@ if hp_dict["compile"] == True:
     model = torch.compile(model)
     loss_fn = torch.compile(loss_fn)
 
-optimizer = optim.SGD(model.parameters(), lr=hp_dict["lr"])
+optimizer = optim.SGD(model.parameters(), lr=hp_dict["lr"], fused=True)
 
 num_epochs = hp_dict["epochs"]
 device = hp_dict["device"]
