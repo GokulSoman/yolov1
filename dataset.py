@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 import os.path as osp
 from random import randint
 from torchvision.transforms import transforms
+from torchvision.io import read_image
 test = 0
 
 import torchvision.transforms.functional as F
@@ -15,8 +16,14 @@ class Letterbox:
         self.fill = fill  # padding color (0 = black)
 
     def __call__(self, img):
-        # original size
-        w, h = img.size
+
+        # messy fix
+        if "PIL" in str(type(img)):
+            # original size
+            w, h = img.size
+        else:
+            # torchvision image
+            h,w = img.shape[-2:]
 
         # compute scale (preserve aspect ratio)
         scale = min(self.target_w / w, self.target_h / h)
@@ -40,18 +47,23 @@ class Letterbox:
         return img
 
 class PascalVOC(torch.utils.data.Dataset):
-    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None) -> None:
+    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None, pil_read=True) -> None:
         self.annotations = pd.read_csv(csv_file, header=None)
         self.image_dir = image_dir
         self.label_dir = label_dir
         self.S = grids
         self.B = box_per_cell
         self.C = classes
-        self.transforms = transforms.Compose([
+        self.transforms = [
             Letterbox((448,448)),
             transforms.ToTensor(),
-        ])
+        ]
+        self.pil_read = pil_read
+        if not self.pil_read:
+            self.transforms.pop()
+        self.transforms = transforms.Compose(self.transforms)
         self.c_transforms = c_transforms
+        
     
     def __len__(self):
         return len(self.annotations)
@@ -74,7 +86,12 @@ class PascalVOC(torch.utils.data.Dataset):
                 #         test_i = n if y_mid_r > s_values[n] else test_i
                 #     test_indices.append((test_i, test_j))
                 #     print(test_indices)
-        image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0]))
+        if self.pil_read:
+            image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0]))
+        else:
+            #torchvision read -> should be faster
+            image = read_image(osp.join(self.image_dir, self.annotations.iloc[index,0]))/255.0
+
         # image_width, image_height = image.size #Not required
         #TODO: why keep as np array?
         orig_values = np.array(boxes, dtype=np.float32)
