@@ -102,7 +102,8 @@ if hp_dict["compile"] == True:
     model = torch.compile(model)
     loss_fn = torch.compile(loss_fn)
 
-optimizer = optim.AdamW(model.parameters(), lr=hp_dict["lr"],fused=hp_dict["fused"],
+optimizer = optim.SGD(model.parameters(), lr=hp_dict["lr"],fused=hp_dict["fused"],
+                      momentum=hp_dict["first_moment"],
                         weight_decay=hp_dict["weight_decay"])
 
 num_epochs = hp_dict["epochs"]
