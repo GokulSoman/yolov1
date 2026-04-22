@@ -205,7 +205,7 @@ if __name__=="__main__":
                         "norm": norm, 
                         "iter_ms/train" : dt, 
                         "im_sec/train": im_sec}
-            for k,v in log_train:
+            for k,v in log_train.item():
                 writer.add_scalar(k, v, global_step)
             run.log(log_train)
             global_step += 1
@@ -239,7 +239,7 @@ if __name__=="__main__":
             log_test = {"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec}
             for k,v in log_test:
                 writer.add_scalar(k, v, global_step-1)
-            run.log(log_test)
+            run.log(log_test.items())
             if test_loss < curr_test_loss:
                 loss_underscored = "_".join(f"{test_loss:.3f}".split('.'))
                 # torch.save(model.state_dict(), f"model_{loss_underscored}.pth")
