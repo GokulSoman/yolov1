@@ -180,8 +180,8 @@ if __name__=="__main__":
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr
 
-            batch_x = batch_x.to(device)
-            batch_y = batch_y.to(device)
+            batch_x = batch_x.to(device, non_blocking=True)
+            batch_y = batch_y.to(device, non_blocking=True)
             with torch.autocast(device_type=device, dtype= torch.bfloat16):
                 out = model(batch_x)
                 loss = loss_fn(out, batch_y)
@@ -223,8 +223,8 @@ if __name__=="__main__":
             with torch.no_grad():
                 for batch_x, batch_y in test_dl:
                     t0 = time.time()
-                    batch_x = batch_x.to(device)
-                    batch_y = batch_y.to(device)
+                    batch_x = batch_x.to(device, non_blocking=True)
+                    batch_y = batch_y.to(device, non_blocking=True)
                     with torch.autocast(device_type=device, dtype=torch.bfloat16):
                         out = model(batch_x)
                         loss = loss_fn(out, batch_y)
