@@ -218,6 +218,13 @@ class PascalVOC(torch.utils.data.Dataset):
         # import pdb; pdb.set_trace()
         image.show()
 
+    def test_sample(self, index=None):
+        if index is None:
+            index = randint(0, len(self) - 1)
+        image, label = self[index]
+        return image, label
+
+
 if __name__ == "__main__":
     dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
     csv_file = osp.join(dataset_dir, "train.csv")
@@ -228,8 +235,8 @@ if __name__ == "__main__":
     dataset.test_annotations(index=None)
 
     # import pdb; pdb.set_trace()
-    a,b = dataset[0]
-    # import pdb; pdb.set_trace()
+    a,b = dataset.test_sample()
+    import pdb; pdb.set_trace()
 
                 
 
