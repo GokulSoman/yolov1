@@ -4,7 +4,7 @@ import torch
 from PIL import Image, ImageDraw
 import os.path as osp
 from random import randint
-from torchvision.transforms import transforms
+from torchvision.transforms import transforms, ToPILImage
 from torchvision.io import read_image
 test = 0
 
@@ -15,18 +15,32 @@ class Letterbox:
         self.target_h, self.target_w = size
         self.fill = fill  # padding color (0 = black)
 
-    def __call__(self, img):
+    def __call__(self, img, scale=None):
 
+        import pdb; pdb.set_trace()
         # messy fix
         if "PIL" in str(type(img)):
             # original size
             w, h = img.size
+        elif len(img.shape) == 2:
+            # bounding boxes (not img)
+            boxes = img # shape (N,5), 5 vals are class, xmid, ymid, w,h (normalized)
+
+            assert scale is not None, "Scale has to be provided for bbox transforms"
+            assert type(scale) == float, "Scale should be provided as a float"
+
+            boxes[:,1:] *= scale
+
+            return boxes
+
         else:
             # torchvision image
             h,w = img.shape[-2:]
 
-        # compute scale (preserve aspect ratio)
-        scale = min(self.target_w / w, self.target_h / h)
+        if scale is None: 
+            # compute scale (preserve aspect ratio)
+            scale = min(self.target_w / w, self.target_h / h)
+        
         new_w, new_h = int(w * scale), int(h * scale)
 
         # resize
@@ -47,15 +61,17 @@ class Letterbox:
         return img
 
 class PascalVOC(torch.utils.data.Dataset):
-    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None, pil_read=True) -> None:
+    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None, pil_read=True, inp_size=448) -> None:
         self.annotations = pd.read_csv(csv_file, header=None)
         self.image_dir = image_dir
         self.label_dir = label_dir
         self.S = grids
         self.B = box_per_cell
         self.C = classes
+        self.inp_size = inp_size
+        self.letterbox_t = Letterbox((self.inp_size,self.inp_size))
         self.transforms = [
-            Letterbox((448,448)),
+            self.letterbox_t,
             transforms.ToTensor(),
         ]
         self.pil_read = pil_read
@@ -88,15 +104,24 @@ class PascalVOC(torch.utils.data.Dataset):
                 #     print(test_indices)
         if self.pil_read:
             image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0]))
+            img_w, img_h = image.size
+
         else:
             #torchvision read -> should be faster
             image = read_image(osp.join(self.image_dir, self.annotations.iloc[index,0]))/255.0
+            img_h, img_w = image.shape[-2:]
+        
+        scale = min(self.inp_size / img_w, self.inp_size / img_h)
 
         # image_width, image_height = image.size #Not required
-        #TODO: why keep as np array?
-        orig_values = np.array(boxes, dtype=np.float32)
+        orig_values = torch.tensor(boxes)
 
         image = self.transforms(image)
+
+        # label transforms
+        # perform same transforms as in image
+        orig_values = self.letterbox_t(orig_values, scale)
+
 
         if self.c_transforms:
             pass
@@ -138,7 +163,7 @@ class PascalVOC(torch.utils.data.Dataset):
         
     
         # The label is provided as a matrix, with each cell consisting of the 20 class scores, presence of an object, and the bounding box values
-        label_matrix = np.zeros((self.S, self.S, self.C + 5 ), dtype=np.float32)
+        label_matrix = torch.zeros((self.S, self.S, self.C + 5 ))
 
         # eq 1: grid_index = floor( x_mid / grid_size ) as integer
         # eq 2: grid_size = image_width/ total_no_of_grids
@@ -146,7 +171,7 @@ class PascalVOC(torch.utils.data.Dataset):
         # Sub 2 and 3 in 1 to get grid_index = floor( x_mid_r * total_no_of_grids) -eq(4)
 
         # (boxes, 2) where columns are x,y indices
-        grid_indices = (orig_values[:,1:3] * self.S).astype(int)
+        grid_indices = (orig_values[:,1:3] * self.S).int()
         # if center ever equals image extreme edge (1)
         grid_indices[grid_indices==self.S] -= 1
 
@@ -179,7 +204,7 @@ class PascalVOC(torch.utils.data.Dataset):
         # label_matrix[grid_indices[:,0], grid_indices[:,1], 23:] = orig_values[:,-2:]
         # import pdb; pdb.set_trace()
         # class labels are 0-19, set element to 1 if index == label
-        label_matrix[grid_indices[:,1], grid_indices[:,0], orig_values[:,0].astype(int)] = 1
+        label_matrix[grid_indices[:,1], grid_indices[:,0], orig_values[:,0].int()] = 1
 
         # for value in orig_values:
         #     i, j = int(self.S * )
@@ -189,7 +214,6 @@ class PascalVOC(torch.utils.data.Dataset):
         #     label_matrix[i,j, 21:] = torch.Tensor(box)
         # print(grid_indices)            
         # print(label_matrix)
-        label_matrix = torch.tensor(label_matrix)
         return image, label_matrix
 
     def test_annotations(self, index = None):
@@ -222,9 +246,53 @@ class PascalVOC(torch.utils.data.Dataset):
         if index is None:
             index = randint(0, len(self) - 1)
         image, label = self[index]
-        return image, label
 
+        assert len(image[image > 1]) == 0, "Values > 1 in normalized image"
+        assert len(image[image < 0]) == 0, "Negative values in normalized image"
+        # remove normalization
+        # image = (image * 255).int()
+        image = ToPILImage()(image)
+        w,h = image.size
+        #  move labels from grid to image
+        # out should be b,5 , where n is num_boxes
+        # 5 values are x_mid, y_mid, w, h
+        boxes = torch.zeros( (len(label[label[..., 20] == 1]), 5))
+        box_id = 0
+        for i in range(self.S):
+            for j in range(self.S):
+                if label[i,j,20] == 0:
+                    # no box here
+                    continue
+                # class
+                boxes[box_id][0] = label[i,j,:20].flatten().argmax()
+                boxes[box_id][1:] = label[i,j,21:]
+                boxes[box_id][1] = (boxes[box_id][1] + j) / self.S
+                boxes[box_id][2] = (boxes[box_id][2] + i) / self.S
 
+                box_id += 1
+        
+        # convert to xmin, ymin, x_max, y_max
+        import pdb; pdb.set_trace()
+        w_half, h_half = boxes[:,3:]
+        boxes[:,1] -= w_half
+        boxes[:,2] -= h_half
+        boxes[:,3] += w_half
+        boxes[:,4] += h_half
+
+        # scale to image width and height
+
+        boxes[:,[1,3]] *= w
+        boxes[:,[2,4]] *= h
+
+        boxes = boxes.int().tolist()
+        
+        pil_boxes = [((xmin, ymin),(xmax,ymax)) for (_,xmin,ymin,xmax,ymax) in boxes]
+        draw = ImageDraw.Draw(image)
+        for box in pil_boxes:
+            draw.rectangle(box, outline="yellow", width=3)
+        print(image.mode, image.size)
+        image.show()
+        return image, boxes
 if __name__ == "__main__":
     dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
     csv_file = osp.join(dataset_dir, "train.csv")
