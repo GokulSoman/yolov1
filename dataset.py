@@ -15,7 +15,7 @@ class Letterbox:
         self.target_h, self.target_w = size
         self.fill = fill  # padding color (0 = black)
 
-    def __call__(self, img, scale=None):
+    def __call__(self, img, scale=None, return_params=False):
 
         import pdb; pdb.set_trace()
         # messy fix
@@ -58,10 +58,13 @@ class Letterbox:
         # apply padding
         img = F.pad(img, (pad_left, pad_top, pad_right, pad_bottom), fill=self.fill)
 
+        if return_params:
+            return img, scale, pad_left, pad_top
+
         return img
 
 class PascalVOC(torch.utils.data.Dataset):
-    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None, pil_read=True, inp_size=448) -> None:
+    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None, pil_read=True, inp_size=448, debug=False) -> None:
         self.annotations = pd.read_csv(csv_file, header=None)
         self.image_dir = image_dir
         self.label_dir = label_dir
@@ -78,7 +81,9 @@ class PascalVOC(torch.utils.data.Dataset):
         if not self.pil_read:
             self.transforms.pop()
         self.transforms = transforms.Compose(self.transforms)
+        self.bbox_transforms = self.compose_bbox_transforms_(self.transforms)
         self.c_transforms = c_transforms
+        self.debug = debug
         
     
     def __len__(self):
@@ -120,45 +125,12 @@ class PascalVOC(torch.utils.data.Dataset):
 
         # label transforms
         # perform same transforms as in image
-        orig_values = self.letterbox_t(orig_values, scale)
+        import pdb; pdb.set_trace()
+        orig_values = self.letterbox_t(orig_values, scale, return_params=self.debug)
 
 
         if self.c_transforms:
             pass
-            # orig_values = torch.tensor(orig_values)
-            # image, orig_values = self.transforms(image, orig_values)
-            # orig_values.detach().cpu().numpy()
-
-        # boxes = orig_values.copy()
-        # # import pdb; pdb.set_trace()
-        
-        # # saving classes as separate array, removing from box values
-        # class_indices = boxes[:,0].astype(int)
-        # boxes = boxes[:,1:]
-
-        # # scaling values w.r.t image size
-        # boxes *= np.array([image_width, image_height, image_width, image_height])
-        # # boxes[:,[0,2]] *= np.array([image_width, image_height, image_width, image_height])
-
-        # # boxes[:,[1,3]] *= image_height
-
-        # # changing values from x_mid,y_mid, w,h to x0, y0, x1, y1
-
-        # boxes[:,:2] -= boxes[:,2:]/2
-        # boxes[:,2:] += boxes[:,:2]
-
-        # # changing all values to int
-        # boxes.astype(int)
-
-
-        # if test == 1 :
-        # image2 = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0])).convert("RGB")
-        # image_draw = ImageDraw.Draw(image2)
-        # boxes = boxes.tolist()
-        # for box in boxes:
-        #     image_draw.rectangle(box, outline="yellow")
-        # image2.show()
-
 
         
     
@@ -214,6 +186,9 @@ class PascalVOC(torch.utils.data.Dataset):
         #     label_matrix[i,j, 21:] = torch.Tensor(box)
         # print(grid_indices)            
         # print(label_matrix)
+
+        if self.debug:
+            return image, label_matrix, (pad_left, pad_top)
         return image, label_matrix
 
     def test_annotations(self, index = None):
@@ -245,7 +220,7 @@ class PascalVOC(torch.utils.data.Dataset):
     def test_sample(self, index=None):
         if index is None:
             index = randint(0, len(self) - 1)
-        image, label = self[index]
+        image, label, padding = self[index]
 
         assert len(image[image > 1]) == 0, "Values > 1 in normalized image"
         assert len(image[image < 0]) == 0, "Negative values in normalized image"
@@ -273,7 +248,7 @@ class PascalVOC(torch.utils.data.Dataset):
         
         # convert to xmin, ymin, x_max, y_max
         import pdb; pdb.set_trace()
-        w_half, h_half = boxes[:,3:]
+        w_half, h_half = boxes[:,3], boxes[:,4]
         boxes[:,1] -= w_half
         boxes[:,2] -= h_half
         boxes[:,3] += w_half
@@ -283,6 +258,11 @@ class PascalVOC(torch.utils.data.Dataset):
 
         boxes[:,[1,3]] *= w
         boxes[:,[2,4]] *= h
+
+        # add padding
+        pad_left, pad_top = padding
+        boxes[:[1,3]] += pad_left
+        boxes[:,[2,4]] += pad_top
 
         boxes = boxes.int().tolist()
         
@@ -299,8 +279,8 @@ if __name__ == "__main__":
     image_dir = osp.join(dataset_dir, "images")
     label_dir = osp.join(dataset_dir, "labels")
     classes_file = osp.join(dataset_dir, "classes.txt")
-    dataset = PascalVOC(csv_file, image_dir, label_dir)
-    dataset.test_annotations(index=None)
+    dataset = PascalVOC(csv_file, image_dir, label_dir, debug=True)
+    # dataset.test_annotations(index=None)
 
     # import pdb; pdb.set_trace()
     a,b = dataset.test_sample()
