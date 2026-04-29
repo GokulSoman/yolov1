@@ -26,7 +26,10 @@ class Letterbox:
             # torchvision image
             h,w = img.shape[-2:]
 
-        assert len(gt_bboxes) == 2, "Target should be of shape (N,5), where N is num of bboxes"
+        if not isinstance(gt_bboxes, torch.Tensor):
+            gt_bboxes = torch.tensor(gt_bboxes)
+
+        assert len(gt_bboxes.shape) == 2, f"Target should be of shape (N,5), where N is num of bboxes, got {gt_bboxes.shape}"
         
         # # bounding boxes (not img)
         # boxes = img # shape (N,5), 5 vals are class, xmid, ymid, w,h (normalized)
