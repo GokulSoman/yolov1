@@ -4,7 +4,7 @@ import torch
 from PIL import Image, ImageDraw
 import os.path as osp
 from random import randint
-from torchvision.transforms import transforms, ToPILImage
+from torchvision.transforms import transforms, v2, ToPILImage, ToTensor
 from torchvision.io import read_image
 test = 0
 
@@ -61,14 +61,21 @@ class Letterbox:
         # apply padding
         img = F.pad(img, (pad_left, pad_top, pad_right, pad_bottom), fill=self.fill)
 
+        import pdb; pdb.set_trace()
         # pad bboxes
-        gt_bboxes[:,1] += (pad_left/self.target_w)
-        gt_bboxes[:,2] += (pad_top)/self.target_h
+        gt_bboxes[:,1] += pad_left
+        gt_bboxes[:,2] += pad_top
 
         return img, gt_bboxes
+    
+class CustomToTensor:
+    def __call__(self, img, gt_bboxes):
+        if isinstance(img, Image.Image):
+            img = ToTensor()(img)
+        return img, torch.tensor(gt_bboxes)
 
 class PascalVOC(torch.utils.data.Dataset):
-    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None, pil_read=True, inp_size=448, debug=False) -> None:
+    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, pil_read=True, inp_size=448, debug=False) -> None:
         self.annotations = pd.read_csv(csv_file, header=None)
         self.image_dir = image_dir
         self.label_dir = label_dir
@@ -79,14 +86,13 @@ class PascalVOC(torch.utils.data.Dataset):
         self.letterbox_t = Letterbox((self.inp_size,self.inp_size))
         self.transforms = [
             self.letterbox_t,
-            transforms.ToTensor(),
+            CustomToTensor(),
         ]
         self.pil_read = pil_read
-        if not self.pil_read:
-            self.transforms.pop()
-        self.transforms = transforms.Compose(self.transforms)
-        self.bbox_transforms = self.compose_bbox_transforms_(self.transforms)
-        self.c_transforms = c_transforms
+        # if not self.pil_read:
+        #     self.transforms.pop()
+        self.transforms = v2.Compose(self.transforms)
+        # self.bbox_transforms = self.compose_bbox_transforms_(self.transforms)
         self.debug = debug
         
     
@@ -108,20 +114,15 @@ class PascalVOC(torch.utils.data.Dataset):
             #torchvision read -> should be faster
             image = read_image(osp.join(self.image_dir, self.annotations.iloc[index,0]))/255.0
             # img_h, img_w = image.shape[-2:]
-        
-        bboxes = torch.tensor(bboxes)
 
+        import pdb; pdb.set_trace()
+        
         image, bboxes = self.transforms(image, bboxes)
 
-        # label transforms
-        # perform same transforms as in image
-        import pdb; pdb.set_trace()
+        if self.debug:
+            return image, bboxes
 
-
-        if self.c_transforms:
-            pass
-
-        
+        # create label matrix
     
         # The label is provided as a matrix, with each cell consisting of the 20 class scores, presence of an object, and the bounding box values
         label_matrix = torch.zeros((self.S, self.S, self.C + 5 ))
@@ -151,90 +152,100 @@ class PascalVOC(torch.utils.data.Dataset):
 
         return image, label_matrix
 
-    def test_annotations(self, index = None):
-        index = randint(0, len(self.annotations)) if index is None else index
-        image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0])) .convert("RGB")
-        image_width, image_height = image.size
-        label_path = osp.join(self.label_dir, self.annotations.iloc[index, 1])
-        # import pdb; pdb.set_trace()
-        with open(label_path, 'r') as annotations_file:
-            for annotation in annotations_file.readlines():
-                # var_r shows that it is a ratio w.r.t image.
-                class_index, x_mid_r, y_mid_r, width_r, height_r = [float(value) if float(value) != int(float(value)) else int(value) for value in annotation.split()]
-                # Shape to PIL given in form [(x0, y0),(x1,y1)]
-                x_mid, y_mid = x_mid_r * image_width, y_mid_r * image_height
-                width, height = width_r * image_width, height_r * image_height
-                x0,y0 = int(x_mid - (width / 2)), int(y_mid - (height/2))
-                x1,y1 = int(x_mid + (width / 2)), int(y_mid + (height/2))
+    # def test_annotations(self, index = None):
+    #     index = randint(0, len(self.annotations)) if index is None else index
+    #     image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0])) .convert("RGB")
+    #     image_width, image_height = image.size
+    #     label_path = osp.join(self.label_dir, self.annotations.iloc[index, 1])
+    #     # import pdb; pdb.set_trace()
+    #     with open(label_path, 'r') as annotations_file:
+    #         for annotation in annotations_file.readlines():
+    #             # var_r shows that it is a ratio w.r.t image.
+    #             class_index, x_mid_r, y_mid_r, width_r, height_r = [float(value) if float(value) != int(float(value)) else int(value) for value in annotation.split()]
+    #             # Shape to PIL given in form [(x0, y0),(x1,y1)]
+    #             x_mid, y_mid = x_mid_r * image_width, y_mid_r * image_height
+    #             width, height = width_r * image_width, height_r * image_height
+    #             x0,y0 = int(x_mid - (width / 2)), int(y_mid - (height/2))
+    #             x1,y1 = int(x_mid + (width / 2)), int(y_mid + (height/2))
 
-                # make pixels fit image
-                x0, y0 = max(0,x0), max(0,y0)
-                x1, y1 = min(image_width, x1), min(image_height, y1)
+    #             # make pixels fit image
+    #             x0, y0 = max(0,x0), max(0,y0)
+    #             x1, y1 = min(image_width, x1), min(image_height, y1)
 
-                box = [(x0,y0), (x1,y1)]
-                draw = ImageDraw.Draw(image)
-                draw.rectangle(box, outline="yellow")
-        # import pdb; pdb.set_trace()
-        image.show()
+    #             box = [(x0,y0), (x1,y1)]
+    #             draw = ImageDraw.Draw(image)
+    #             draw.rectangle(box, outline="yellow")
+    #     # import pdb; pdb.set_trace()
+    #     image.show()
 
     def test_sample(self, index=None):
+        assert self.debug is True, "test sample works only in debug mode"
         if index is None:
             index = randint(0, len(self) - 1)
-        image, label, padding = self[index]
+        image, boxes = self[index]
 
-        assert len(image[image > 1]) == 0, "Values > 1 in normalized image"
-        assert len(image[image < 0]) == 0, "Negative values in normalized image"
+        assert len(image[image > 1]) == 0, "Values > 1 in normalized image is not allowed"
+        assert len(image[image < 0]) == 0, "Negative values in normalized image is not allowed"
         # remove normalization
         # image = (image * 255).int()
-        image = ToPILImage()(image)
+        image = ToPILImage()(image) # back to 0-255
         w,h = image.size
+
+        assert w==h==self.inp_size, "Values are different from model input"
+        # boxes[:,1:] *= w
+
+        import pdb; pdb.set_trace()
+
+        boxes[:,3:] += boxes[:,1:2]
         #  move labels from grid to image
         # out should be b,5 , where n is num_boxes
         # 5 values are x_mid, y_mid, w, h
-        boxes = torch.zeros( (len(label[label[..., 20] == 1]), 5))
-        box_id = 0
-        for i in range(self.S):
-            for j in range(self.S):
-                if label[i,j,20] == 0:
-                    # no box here
-                    continue
-                # class
-                boxes[box_id][0] = label[i,j,:20].flatten().argmax()
-                boxes[box_id][1:] = label[i,j,21:]
-                boxes[box_id][1] = (boxes[box_id][1] + j) / self.S
-                boxes[box_id][2] = (boxes[box_id][2] + i) / self.S
+        # boxes = torch.zeros( (len(label[label[..., 20] == 1]), 5))
+        # box_id = 0
+        # for i in range(self.S):
+        #     for j in range(self.S):
+        #         if label[i,j,20] == 0:
+        #             # no box here
+        #             continue
+        #         # class
+        #         boxes[box_id][0] = label[i,j,:20].flatten().argmax()
+        #         boxes[box_id][1:] = label[i,j,21:]
+        #         boxes[box_id][1] = (boxes[box_id][1] + j) / self.S
+        #         boxes[box_id][2] = (boxes[box_id][2] + i) / self.S
 
-                box_id += 1
+        #         box_id += 1
         
-        # convert to xmin, ymin, x_max, y_max
-        import pdb; pdb.set_trace()
-        w_half, h_half = boxes[:,3], boxes[:,4]
-        boxes[:,1] -= w_half
-        boxes[:,2] -= h_half
-        boxes[:,3] += w_half
-        boxes[:,4] += h_half
+        # # convert to xmin, ymin, x_max, y_max
+        # import pdb; pdb.set_trace()
+        # w_half, h_half = boxes[:,3], boxes[:,4]
+        # boxes[:,1] -= w_half
+        # boxes[:,2] -= h_half
+        # boxes[:,3] += w_half
+        # boxes[:,4] += h_half
 
-        # scale to image width and height
+        # # scale to image width and height
 
-        boxes[:,[1,3]] *= w
-        boxes[:,[2,4]] *= h
+        # boxes[:,[1,3]] *= w
+        # boxes[:,[2,4]] *= h
 
-        # add padding
-        pad_left, pad_top = padding
-        boxes[:[1,3]] += pad_left
-        boxes[:,[2,4]] += pad_top
+        # # add padding
+        # pad_left, pad_top = padding
+        # boxes[:[1,3]] += pad_left
+        # boxes[:,[2,4]] += pad_top
 
-        boxes = boxes.int().tolist()
+        classes = boxes[:,0].int().tolist()
+        boxes = boxes[:,1:].int().clip(min=0,max=w).tolist()
         
-        pil_boxes = [((xmin, ymin),(xmax,ymax)) for (_,xmin,ymin,xmax,ymax) in boxes]
+        pil_boxes = [((xmin, ymin),(xmax,ymax)) for (xmin,ymin,xmax,ymax) in boxes]
         draw = ImageDraw.Draw(image)
+        
         for box in pil_boxes:
             draw.rectangle(box, outline="yellow", width=3)
         print(image.mode, image.size)
         image.show()
         return image, boxes
 if __name__ == "__main__":
-    dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
+    dataset_dir = "/home/gokul/datasets/pascal_voc"
     csv_file = osp.join(dataset_dir, "train.csv")
     image_dir = osp.join(dataset_dir, "images")
     label_dir = osp.join(dataset_dir, "labels")
