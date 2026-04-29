@@ -15,27 +15,26 @@ class Letterbox:
         self.target_h, self.target_w = size
         self.fill = fill  # padding color (0 = black)
 
-    def __call__(self, img, scale=None, return_params=False):
+    def __call__(self, img, gt_bboxes, scale=None, return_params=False):
 
-        import pdb; pdb.set_trace()
         # messy fix
         if "PIL" in str(type(img)):
             # original size
             w, h = img.size
-        elif len(img.shape) == 2:
-            # bounding boxes (not img)
-            boxes = img # shape (N,5), 5 vals are class, xmid, ymid, w,h (normalized)
-
-            assert scale is not None, "Scale has to be provided for bbox transforms"
-            assert type(scale) == float, "Scale should be provided as a float"
-
-            boxes[:,1:] *= scale
-
-            return boxes
 
         else:
             # torchvision image
             h,w = img.shape[-2:]
+
+        assert len(gt_bboxes) == 2, "Target should be of shape (N,5), where N is num of bboxes"
+        
+        # # bounding boxes (not img)
+        # boxes = img # shape (N,5), 5 vals are class, xmid, ymid, w,h (normalized)
+
+        # assert scale is not None, "Scale has to be provided for bbox transforms"
+        # assert type(scale) == float, "Scale should be provided as a float"
+
+        # boxes[:,1:] *= scale
 
         if scale is None: 
             # compute scale (preserve aspect ratio)
@@ -45,6 +44,7 @@ class Letterbox:
 
         # resize
         img = F.resize(img, (new_h, new_w))
+        gt_bboxes[:,1:] *= scale
 
         # compute padding
         pad_w = self.target_w - new_w
@@ -58,10 +58,11 @@ class Letterbox:
         # apply padding
         img = F.pad(img, (pad_left, pad_top, pad_right, pad_bottom), fill=self.fill)
 
-        if return_params:
-            return img, scale, pad_left, pad_top
+        # pad bboxes
+        gt_bboxes[:,1] += (pad_left/self.target_w)
+        gt_bboxes[:,2] += (pad_top)/self.target_h
 
-        return img
+        return img, gt_bboxes
 
 class PascalVOC(torch.utils.data.Dataset):
     def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, c_transforms=None, pil_read=True, inp_size=448, debug=False) -> None:
@@ -91,42 +92,27 @@ class PascalVOC(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         label_path = osp.join(self.label_dir,self.annotations.iloc[index,1])
-        boxes = []
+        bboxes = []
         with open(label_path, 'r') as annotations_file:
             for annotation in annotations_file.readlines():
                 class_index, x_mid_r, y_mid_r, width_r, height_r = [float(value) if float(value)!= int(float(value)) else int(value) for value in annotation.split()]
-                boxes.append([class_index, x_mid_r, y_mid_r, width_r, height_r])
+                bboxes.append([class_index, x_mid_r, y_mid_r, width_r, height_r])
 
-                # finding rightmost and lowermost prediction?? Why??
-                # if test == 1:
-                #     s_values = np.linspace(0,1,self.S, endpoint=False)
-                #     test_indices = []
-                #     test_i, test_j = 0, 0
-                #     for n in range(len(s_values)):
-                #         test_j = n if x_mid_r > s_values[n] else test_j
-                #         test_i = n if y_mid_r > s_values[n] else test_i
-                #     test_indices.append((test_i, test_j))
-                #     print(test_indices)
         if self.pil_read:
             image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0]))
-            img_w, img_h = image.size
 
         else:
             #torchvision read -> should be faster
             image = read_image(osp.join(self.image_dir, self.annotations.iloc[index,0]))/255.0
-            img_h, img_w = image.shape[-2:]
+            # img_h, img_w = image.shape[-2:]
         
-        scale = min(self.inp_size / img_w, self.inp_size / img_h)
+        bboxes = torch.tensor(bboxes)
 
-        # image_width, image_height = image.size #Not required
-        orig_values = torch.tensor(boxes)
-
-        image = self.transforms(image)
+        image, bboxes = self.transforms(image, bboxes)
 
         # label transforms
         # perform same transforms as in image
         import pdb; pdb.set_trace()
-        orig_values = self.letterbox_t(orig_values, scale, return_params=self.debug)
 
 
         if self.c_transforms:
@@ -137,58 +123,29 @@ class PascalVOC(torch.utils.data.Dataset):
         # The label is provided as a matrix, with each cell consisting of the 20 class scores, presence of an object, and the bounding box values
         label_matrix = torch.zeros((self.S, self.S, self.C + 5 ))
 
-        # eq 1: grid_index = floor( x_mid / grid_size ) as integer
-        # eq 2: grid_size = image_width/ total_no_of_grids
-        # eq 3: x_mid_r = x_mid / image_width
-        # Sub 2 and 3 in 1 to get grid_index = floor( x_mid_r * total_no_of_grids) -eq(4)
 
         # (boxes, 2) where columns are x,y indices
-        grid_indices = (orig_values[:,1:3] * self.S).int()
+        grid_indices = (bboxes[:,1:3] * self.S).int()
         # if center ever equals image extreme edge (1)
         grid_indices[grid_indices==self.S] -= 1
 
 
-        # TO find x_mid w,r,t its corresponding cell
-        # eq 5: x_cell = (x_mid - grid_index * grid_size) / grid_size
-        # eq 6: x_mid = x_mid_r * image_width
-        # eq 7 : grid_size = image_width / no.of_grids
-        # Sub 6 and 7 in eq 5, x_cell = x_mid_r * no.of.grids - grid_index eq (8)
 
-        # Indices changed to Row, column
-        # grid_indices = grid_indices[:,[1,0]].astype(int)
-
-        xy_cell = orig_values[:,1:3] * self.S - grid_indices
-        # print(xy_cell)
-
-        # import pdb;pdb.set_trace()
+        xy_cell = bboxes[:,1:3] * self.S - grid_indices
 
         # NP Indexing
         
-        #TODO: check 4 steps, esp orig_values
+        #TODO: check 4 steps, esp bboxes
         # col, row -> row, col
         label_matrix[grid_indices[:,1], grid_indices[:,0], 20] = 1
         # label_matrix[grid_indices[:,0], grid_indices[:,1],20] = 1
         
         label_matrix[grid_indices[:,1], grid_indices[:,0],21:23] = xy_cell
-        label_matrix[grid_indices[:,1], grid_indices[:, 0 ],23:] = orig_values[:,-2:]
+        label_matrix[grid_indices[:,1], grid_indices[:, 0 ],23:] = bboxes[:,-2:]
 
-        # label_matrix[grid_indices[:,0], grid_indices[:,1],21:23] = xy_cell
-        # label_matrix[grid_indices[:,0], grid_indices[:,1], 23:] = orig_values[:,-2:]
-        # import pdb; pdb.set_trace()
         # class labels are 0-19, set element to 1 if index == label
-        label_matrix[grid_indices[:,1], grid_indices[:,0], orig_values[:,0].int()] = 1
+        label_matrix[grid_indices[:,1], grid_indices[:,0], bboxes[:,0].int()] = 1
 
-        # for value in orig_values:
-        #     i, j = int(self.S * )
-        #     grid_indices.append((i,j))
-        #     label_matrix[i,j,20] = 1
-        #     label_matrix[i,j, index - 1] = 1
-        #     label_matrix[i,j, 21:] = torch.Tensor(box)
-        # print(grid_indices)            
-        # print(label_matrix)
-
-        if self.debug:
-            return image, label_matrix, (pad_left, pad_top)
         return image, label_matrix
 
     def test_annotations(self, index = None):
