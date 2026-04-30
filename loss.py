@@ -12,7 +12,7 @@ class YoloV1Loss(nn.Module):
         self.lambda_noobj = 0.5
         self.lambda_coord = 5
 
-    def forward(self, predictions, target):
+    def forward(self, predictions, target, runlog=None):
 
         # import pdb;pdb.set_trace()
         predictions = predictions.reshape(-1, self.S, self.S, self.C + self.B * 5)
@@ -106,5 +106,15 @@ class YoloV1Loss(nn.Module):
         + object_loss
         + self.lambda_noobj * no_object_loss
         + class_loss).mean()
+
+        if runlog:
+            log_data = {
+                "coord_loss" : (self.lambda_coord * box_loss).mean().detach().cpu().item(),
+                "object_loss" : object_loss.mean().detach().cpu().item(),
+                "no_object_loss" : (self.lambda_noobj * no_object_loss).mean().detach().cpu().item(),
+                "class_loss" : class_loss.mean().detach().cpu().item()
+            }
+            runlog.log(log_data)
+
 
         return loss

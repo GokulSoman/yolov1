@@ -186,7 +186,7 @@ if __name__=="__main__":
             batch_y = batch_y.to(device, non_blocking=True)
             with torch.autocast(device_type=device, dtype= torch.bfloat16):
                 out = model(batch_x)
-                loss = loss_fn(out, batch_y)
+                loss = loss_fn(out, batch_y, runlog=run)
             # import pdb; pdb.set_trace()
             # print(f"Loss: {loss.item()}")
             
