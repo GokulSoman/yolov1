@@ -4,4 +4,5 @@ test*txt
 test_space.ipynb
 wandb
 runs
+.vscode
 **/*pth
