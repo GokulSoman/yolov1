@@ -34,6 +34,7 @@ img_dir = osp.join(dataset_dir, "images")
 label_dir = osp.join(dataset_dir, "labels")
 train_csv = osp.join(dataset_dir, "train.csv")
 test_csv = osp.join(dataset_dir, "test.csv")
+classes_file = osp.join(dataset_dir, "classes.txt")
 
 
 seed = 123
@@ -68,8 +69,8 @@ if torch.cuda.is_available():
 torch.set_float32_matmul_precision("high")
 
 
-train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir, pil_read=False)
-test_data = PascalVOC(csv_file=test_csv, image_dir=img_dir, label_dir=label_dir, pil_read=False)
+train_data = PascalVOC(csv_file=train_csv, image_dir=img_dir, label_dir=label_dir, classes_file=classes_file,pil_read=False)
+test_data = PascalVOC(csv_file=test_csv, image_dir=img_dir, label_dir=label_dir, classes_file=classes_file, pil_read=False)
 # print(f"Train data size: {len(train_data)}")
 # print(f"Test data size: {len(test_data)}")
 
