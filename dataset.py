@@ -55,6 +55,9 @@ class Letterbox:
         pad_w = self.target_w - new_w
         pad_h = self.target_h - new_h
 
+        assert pad_w >= 0, f"Negative padding not allowed: {pad_w=}"
+        assert pad_h >= 0, f"Negative padding not allowed: {pad_h=}"
+
         pad_left = pad_w // 2
         pad_right = pad_w - pad_left
         pad_top = pad_h // 2
@@ -77,7 +80,9 @@ class CustomToTensor:
     def __call__(self, img, gt_bboxes):
         if isinstance(img, Image.Image):
             img = ToTensor()(img)
-        return img, torch.tensor(gt_bboxes)
+        if not isinstance(gt_bboxes, torch.Tensor):
+            gt_bboxes = torch.tensor(gt_bboxes)
+        return img, gt_bboxes
 
 class PascalVOC(torch.utils.data.Dataset):
     def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, pil_read=True, inp_size=448, debug=False) -> None:
