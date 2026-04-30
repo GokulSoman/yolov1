@@ -5,7 +5,9 @@ from PIL import Image, ImageDraw
 import os.path as osp
 from random import randint
 from torchvision.transforms import transforms, v2, ToPILImage, ToTensor
-from torchvision.io import read_image
+from torchvision.io import read_image, decode_image
+import matplotlib.pyplot as plt
+
 test = 0
 
 import torchvision.transforms.functional as F
@@ -47,7 +49,7 @@ class Letterbox:
 
         # resize
         img = F.resize(img, (new_h, new_w))
-        gt_bboxes[:,1:] *= scale
+        gt_bboxes[:,1:] *= torch.tensor([new_w, new_h, new_w, new_h]).view(1,-1)
 
         # compute padding
         pad_w = self.target_w - new_w
@@ -61,10 +63,13 @@ class Letterbox:
         # apply padding
         img = F.pad(img, (pad_left, pad_top, pad_right, pad_bottom), fill=self.fill)
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         # pad bboxes
         gt_bboxes[:,1] += pad_left
         gt_bboxes[:,2] += pad_top
+
+        # renormalize
+        gt_bboxes[:,1:] /= new_w
 
         return img, gt_bboxes
     
@@ -112,10 +117,10 @@ class PascalVOC(torch.utils.data.Dataset):
 
         else:
             #torchvision read -> should be faster
-            image = read_image(osp.join(self.image_dir, self.annotations.iloc[index,0]))/255.0
+            image = decode_image(osp.join(self.image_dir, self.annotations.iloc[index,0]))/255.0
             # img_h, img_w = image.shape[-2:]
 
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         
         image, bboxes = self.transforms(image, bboxes)
 
@@ -157,7 +162,7 @@ class PascalVOC(torch.utils.data.Dataset):
     #     image = Image.open(osp.join(self.image_dir, self.annotations.iloc[index,0])) .convert("RGB")
     #     image_width, image_height = image.size
     #     label_path = osp.join(self.label_dir, self.annotations.iloc[index, 1])
-    #     # import pdb; pdb.set_trace()
+    #     # #import pdb; pdb.set_trace()
     #     with open(label_path, 'r') as annotations_file:
     #         for annotation in annotations_file.readlines():
     #             # var_r shows that it is a ratio w.r.t image.
@@ -175,7 +180,7 @@ class PascalVOC(torch.utils.data.Dataset):
     #             box = [(x0,y0), (x1,y1)]
     #             draw = ImageDraw.Draw(image)
     #             draw.rectangle(box, outline="yellow")
-    #     # import pdb; pdb.set_trace()
+    #     # #import pdb; pdb.set_trace()
     #     image.show()
 
     def test_sample(self, index=None):
@@ -192,11 +197,11 @@ class PascalVOC(torch.utils.data.Dataset):
         w,h = image.size
 
         assert w==h==self.inp_size, "Values are different from model input"
-        # boxes[:,1:] *= w
+        boxes[:,1:] *= w
 
-        import pdb; pdb.set_trace()
+        # #import pdb; pdb.set_trace()
 
-        boxes[:,3:] += boxes[:,1:2]
+        # boxes[:,3:] += boxes[:,1:2] #x,y,w,h -> xmin, ymin, xmax, ymax
         #  move labels from grid to image
         # out should be b,5 , where n is num_boxes
         # 5 values are x_mid, y_mid, w, h
@@ -216,7 +221,7 @@ class PascalVOC(torch.utils.data.Dataset):
         #         box_id += 1
         
         # # convert to xmin, ymin, x_max, y_max
-        # import pdb; pdb.set_trace()
+        # #import pdb; pdb.set_trace()
         # w_half, h_half = boxes[:,3], boxes[:,4]
         # boxes[:,1] -= w_half
         # boxes[:,2] -= h_half
@@ -234,7 +239,13 @@ class PascalVOC(torch.utils.data.Dataset):
         # boxes[:,[2,4]] += pad_top
 
         classes = boxes[:,0].int().tolist()
-        boxes = boxes[:,1:].int().clip(min=0,max=w).tolist()
+        w_half, h_half = boxes[:,3], boxes[:,4]
+        boxes[:,1] -= w_half
+        boxes[:,2] -= h_half
+        boxes[:,3] = boxes[:,1] + w_half
+        boxes[:,4] = boxes[:,2] + h_half
+
+        boxes = boxes[:,1:].int().clip(min=0,max=w-1).tolist() # 0-447
         
         pil_boxes = [((xmin, ymin),(xmax,ymax)) for (xmin,ymin,xmax,ymax) in boxes]
         draw = ImageDraw.Draw(image)
@@ -242,7 +253,10 @@ class PascalVOC(torch.utils.data.Dataset):
         for box in pil_boxes:
             draw.rectangle(box, outline="yellow", width=3)
         print(image.mode, image.size)
-        image.show()
+        # image.show()
+        plt.imshow(image)
+        plt.axis("off")
+        plt.show()
         return image, boxes
 if __name__ == "__main__":
     dataset_dir = "/home/gokul/datasets/pascal_voc"
@@ -253,9 +267,9 @@ if __name__ == "__main__":
     dataset = PascalVOC(csv_file, image_dir, label_dir, debug=True)
     # dataset.test_annotations(index=None)
 
-    # import pdb; pdb.set_trace()
+    # #import pdb; pdb.set_trace()
     a,b = dataset.test_sample()
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
 
                 
 
