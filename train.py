@@ -29,7 +29,7 @@ from loss import YoloV1Loss
 
 import json
 
-dataset_dir = "/home/gokul/Downloads/pascal_voc_aladdin"
+dataset_dir = "/home/gokul/datasets/pascal_voc"
 img_dir = osp.join(dataset_dir, "images")
 label_dir = osp.join(dataset_dir, "labels")
 train_csv = osp.join(dataset_dir, "train.csv")
