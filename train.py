@@ -218,7 +218,7 @@ if __name__=="__main__":
             #     break
 
         # test step
-        if (epoch+1) % 3 == 0 or epoch==num_epochs:
+        if (epoch+1) % 3 == 0 or epoch==(num_epochs - 1):
             test_loss = 0.0
             dt = 0.0
             im_sec = 0.0
