@@ -8,7 +8,7 @@
     "batch_size": 32,
     "weight_decay": 1e-4,
     "first_moment": 0.9,
-    "epochs": 1,
+    "epochs": 140,
     "num_workers": 4,
     "pin_memory": true,
     "device": "cuda",
