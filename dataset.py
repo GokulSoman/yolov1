@@ -19,8 +19,26 @@ def class_to_color(cls_id, num_classes):
     color = cmap(cls_id / num_classes)
     return tuple(int(c * 255) for c in color[:3])
 
+def to_linear(c):
+    return c/12.92 if c <= 0.04045 else ((c+0.055)/1.055)**2.4
 
-def draw_pil_boxes(img, boxes, classes):
+def light_black(color):
+    text_color = (255,255,255)
+    # normalize
+    r,g,b = [x/255.0 for x in color]
+    # linearize to srgb
+    r,g,b = [to_linear(x) for x in [r,g,b]]
+    # find luminance
+    luminance = (0.2126 * r + 0.7152  *g + 0.0722 * b)
+    if luminance > 0.5:
+        # make text dark
+        text_color = (0,0,0)
+    return text_color
+        
+
+
+def draw_pil_boxes(img, boxes, labels, class_dict):
+    w,h = img.size
     draw = ImageDraw.Draw(img)
 
     # Optional: load a better font
@@ -29,11 +47,11 @@ def draw_pil_boxes(img, boxes, classes):
     except:
         font = ImageFont.load_default()
 
-    for box, cls in zip(boxes, classes):
+    for box, cls in zip(boxes, labels):
         x1, y1, x2, y2 = box
-        label = f"class_{cls}"
+        label = f"{cls}"
 
-        color = class_to_color(cls, num_classes=20)
+        color = class_to_color(class_dict[cls], num_classes=20)
 
         # Draw bounding box
         draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
@@ -42,15 +60,32 @@ def draw_pil_boxes(img, boxes, classes):
         bbox = draw.textbbox((0, 0), label, font=font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
+        
+        t_x1, t_y1, t_x2, t_y2 = x1, y1 - text_h, x1+ text_w, y1
 
+        # clip extremes
+        if y1 - text_h < 0:
+            # move box downwards
+            print("move box downwards")
+            t_y1 = 0
+            t_y2 = text_h
+        if x1 + text_h > (w-1):
+            # move left
+            print("move left")
+            t_x2 = w - 1
+            t_x1 = (w-1) - text_w
+            
+        text_dims = [t_x1, t_y1, t_x2, t_y2]
+
+        
         # Draw background rectangle (for readability)
         draw.rectangle(
-            [x1, y1 - text_h, x1 + text_w, y1],
+            text_dims,
             fill=color
         )
 
         # Draw text
-        draw.text((x1, y1 - text_h), label, fill=(255, 255, 255), font=font)
+        draw.text((t_x1, t_y1), label, fill=light_black(color), font=font)
 
     return img
 
@@ -91,6 +126,7 @@ class Letterbox:
 
         # resize
         img = F.resize(img, (new_h, new_w))
+        # import pdb; pdb.set_trace()
         gt_bboxes[:,1:] *= torch.tensor([new_w, new_h, new_w, new_h]).view(1,-1)
 
         # compute padding
@@ -114,7 +150,8 @@ class Letterbox:
         gt_bboxes[:,2] += pad_top
 
         # renormalize
-        gt_bboxes[:,1:] /= new_w
+        gt_bboxes[:,[1,3]] /= self.target_w
+        gt_bboxes[:,[2,4]] /= self.target_h
 
         return img, gt_bboxes
     
@@ -127,7 +164,7 @@ class CustomToTensor:
         return img, gt_bboxes
 
 class PascalVOC(torch.utils.data.Dataset):
-    def __init__(self, csv_file, image_dir, label_dir, grids=7,  box_per_cell=2, classes=20, pil_read=True, inp_size=448, debug=False) -> None:
+    def __init__(self, csv_file, image_dir, label_dir, classes_file, grids=7,  box_per_cell=2, classes=20, pil_read=True, inp_size=448, debug=False) -> None:
         self.annotations = pd.read_csv(csv_file, header=None)
         self.image_dir = image_dir
         self.label_dir = label_dir
@@ -146,7 +183,12 @@ class PascalVOC(torch.utils.data.Dataset):
         self.transforms = v2.Compose(self.transforms)
         # self.bbox_transforms = self.compose_bbox_transforms_(self.transforms)
         self.debug = debug
-        
+        self.classes_file = classes_file
+        with open(self.classes_file,'r') as cf:
+            self.classes = cf.readlines()
+        self.classes = [x.strip() for x in self.classes]
+        self.id2class = {i:x for i,x in enumerate(self.classes)}
+        self.class2id = {x:i for i,x in self.id2class.items()}
     
     def __len__(self):
         return len(self.annotations)
@@ -286,6 +328,7 @@ class PascalVOC(torch.utils.data.Dataset):
         # boxes[:,[2,4]] += pad_top
 
         classes = boxes[:,0].int().tolist()
+        labels = [self.id2class[x] for x in classes]
         w_half, h_half = boxes[:,3]/2, boxes[:,4]/2
         
         boxes[:,3] = boxes[:,1] + w_half # xmax = xmid + w/2
@@ -303,7 +346,7 @@ class PascalVOC(torch.utils.data.Dataset):
         #     draw.rectangle(box, outline=color, width=2)
         # print(image.mode, image.size)
 
-        image = draw_pil_boxes(image, boxes, classes)
+        image = draw_pil_boxes(image, boxes, labels, self.class2id)
         # image.show()
         plt.figure(f"{index}") 
         plt.imshow(image)
@@ -316,7 +359,7 @@ if __name__ == "__main__":
     image_dir = osp.join(dataset_dir, "images")
     label_dir = osp.join(dataset_dir, "labels")
     classes_file = osp.join(dataset_dir, "classes.txt")
-    dataset = PascalVOC(csv_file, image_dir, label_dir, debug=True)
+    dataset = PascalVOC(csv_file, image_dir, label_dir,classes_file, debug=True)
     # dataset.test_annotations(index=None)
 
     # #import pdb; pdb.set_trace()
