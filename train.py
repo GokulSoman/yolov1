@@ -186,7 +186,7 @@ if __name__=="__main__":
             batch_y = batch_y.to(device, non_blocking=True)
             with torch.autocast(device_type=device, dtype= torch.bfloat16):
                 out = model(batch_x)
-                loss = loss_fn(out, batch_y, runlog=run)
+                loss, metrics = loss_fn(out, batch_y, runlog=run)
             # import pdb; pdb.set_trace()
             # print(f"Loss: {loss.item()}")
             
@@ -208,9 +208,11 @@ if __name__=="__main__":
                         "norm": norm, 
                         "iter_ms/train" : dt, 
                         "im_sec/train": im_sec}
+            
+            metrics = {f"{k}/train":v.detach().cpu().item() for k,v in metrics.items()}
             for k,v in log_train.items():
                 writer.add_scalar(k, v, global_step)
-            run.log(log_train)
+            run.log({**log_train, **metrics})
             global_step += 1
             # pbar.set_postfix(loss=f"{loss.item():.4f}")
             # pbar.update(1)
@@ -230,7 +232,7 @@ if __name__=="__main__":
                     batch_y = batch_y.to(device, non_blocking=True)
                     with torch.autocast(device_type=device, dtype=torch.bfloat16):
                         out = model(batch_x)
-                        loss = loss_fn(out, batch_y)
+                        loss, test_metrics = loss_fn(out, batch_y)
                     test_loss += loss.item()
                     torch.cuda.synchronize()
                     t1 = time.time()
@@ -242,7 +244,8 @@ if __name__=="__main__":
             log_test = {"epoch": epoch,"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec}
             for k,v in log_test.items():
                 writer.add_scalar(k, v, global_step-1)
-            run.log(log_test)
+            test_metrics = {f"{k}/test": v.detach().cpu().item() for k,v in test_metrics.items()}
+            run.log({**log_test, **test_metrics})
             if test_loss < curr_test_loss:
                 loss_underscored = "_".join(f"{test_loss:.3f}".split('.'))
                 # torch.save(model.state_dict(), f"model_{loss_underscored}.pth")

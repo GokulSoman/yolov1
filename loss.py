@@ -107,14 +107,14 @@ class YoloV1Loss(nn.Module):
         + self.lambda_noobj * no_object_loss
         + class_loss).mean()
 
+        log_data = None
         if runlog:
-            log_data = {
-                "coord_loss" : (self.lambda_coord * box_loss).mean().detach().cpu().item(),
-                "object_loss" : object_loss.mean().detach().cpu().item(),
-                "no_object_loss" : (self.lambda_noobj * no_object_loss).mean().detach().cpu().item(),
-                "class_loss" : class_loss.mean().detach().cpu().item()
-            }
-            runlog.log(log_data)
+                log_data = {
+                    "coord_loss" : (self.lambda_coord * box_loss).mean(),
+                    "object_loss" : object_loss.mean(),
+                    "no_object_loss" : (self.lambda_noobj * no_object_loss).mean(),
+                    "class_loss" : class_loss.mean()
+                }
 
 
-        return loss
+        return loss, log_data
