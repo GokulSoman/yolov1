@@ -305,7 +305,7 @@ class PascalVOC(torch.utils.data.Dataset):
 
         image = draw_pil_boxes(image, boxes, classes)
         # image.show()
-        plt.figure(f"{index}: {label_path}") 
+        plt.figure(f"{index}") 
         plt.imshow(image)
         plt.axis("off")
         plt.show()
