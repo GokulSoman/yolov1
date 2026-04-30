@@ -200,8 +200,9 @@ if __name__=="__main__":
             t1 = time.time()
             dt = (t1-t0)*1000
             im_sec = batch_y.shape[0]*1000/dt
-            print(f"step: {global_step:4d}, lr: {lr:.5f}, loss: {loss.item():.4f}, norm: {norm:.4f}, dt: {dt:.3f}ms, im_sec: {im_sec}")
-            log_train = {"loss/train": loss.item(), 
+            print(f"epoch: {epoch:3d}, step: {global_step:4d}, lr: {lr:.5f}, loss: {loss.item():.4f}, norm: {norm:.4f}, dt: {dt:.3f}ms, im_sec: {im_sec:.4f}")
+            log_train = {"epoch" : epoch,
+                        "loss/train": loss.item(), 
                         "lr": lr, 
                         "step/train" : global_step, 
                         "norm": norm, 
@@ -238,7 +239,7 @@ if __name__=="__main__":
             test_loss /= test_total_steps
             dt /= test_total_steps
             im_sec /= test_total_steps
-            log_test = {"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec}
+            log_test = {"epoch": epoch,"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec}
             for k,v in log_test.items():
                 writer.add_scalar(k, v, global_step-1)
             run.log(log_test)
