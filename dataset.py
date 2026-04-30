@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import os.path as osp
 from random import randint
 from torchvision.transforms import transforms, v2, ToPILImage, ToTensor
@@ -11,6 +11,48 @@ import matplotlib.pyplot as plt
 test = 0
 
 import torchvision.transforms.functional as F
+
+
+cmap = plt.get_cmap("hsv")  # or "hsv", "viridis"
+
+def class_to_color(cls_id, num_classes):
+    color = cmap(cls_id / num_classes)
+    return tuple(int(c * 255) for c in color[:3])
+
+
+def draw_pil_boxes(img, boxes, classes):
+    draw = ImageDraw.Draw(img)
+
+    # Optional: load a better font
+    try:
+        font = ImageFont.truetype("arial.ttf", 16)
+    except:
+        font = ImageFont.load_default()
+
+    for box, cls in zip(boxes, classes):
+        x1, y1, x2, y2 = box
+        label = f"class_{cls}"
+
+        color = class_to_color(cls, num_classes=20)
+
+        # Draw bounding box
+        draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+
+        # Get text size
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
+        # Draw background rectangle (for readability)
+        draw.rectangle(
+            [x1, y1 - text_h, x1 + text_w, y1],
+            fill=color
+        )
+
+        # Draw text
+        draw.text((x1, y1 - text_h), label, fill=(255, 255, 255), font=font)
+
+    return img
 
 class Letterbox:
     def __init__(self, size, fill=0):
@@ -244,21 +286,26 @@ class PascalVOC(torch.utils.data.Dataset):
         # boxes[:,[2,4]] += pad_top
 
         classes = boxes[:,0].int().tolist()
-        w_half, h_half = boxes[:,3], boxes[:,4]
-        boxes[:,1] -= w_half
-        boxes[:,2] -= h_half
-        boxes[:,3] = boxes[:,1] + w_half
-        boxes[:,4] = boxes[:,2] + h_half
+        w_half, h_half = boxes[:,3]/2, boxes[:,4]/2
+        
+        boxes[:,3] = boxes[:,1] + w_half # xmax = xmid + w/2
+        boxes[:,4] = boxes[:,2] + h_half # ymax = ymid + h/2
+        boxes[:,1] -= w_half # xmin = xmid - w/2
+        boxes[:,2] -= h_half #ymin = ymid - h/2
 
         boxes = boxes[:,1:].int().clip(min=0,max=w-1).tolist() # 0-447
         
-        pil_boxes = [((xmin, ymin),(xmax,ymax)) for (xmin,ymin,xmax,ymax) in boxes]
-        draw = ImageDraw.Draw(image)
+        # pil_boxes = [((xmin, ymin),(xmax,ymax)) for (xmin,ymin,xmax,ymax) in boxes]
+        # draw = ImageDraw.Draw(image)
         
-        for box in pil_boxes:
-            draw.rectangle(box, outline="yellow", width=3)
-        print(image.mode, image.size)
+        # for id,box in zip(classes,boxes):
+        #     color = class_to_color(id, 20) # for pascal_voc
+        #     draw.rectangle(box, outline=color, width=2)
+        # print(image.mode, image.size)
+
+        image = draw_pil_boxes(image, boxes, classes)
         # image.show()
+        plt.figure(f"{index}: {label_path}") 
         plt.imshow(image)
         plt.axis("off")
         plt.show()
