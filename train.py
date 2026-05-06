@@ -91,7 +91,7 @@ tr_total_steps = len(train_dl)
 test_dl = DataLoader(
     test_data,
     batch_size=hp_dict["batch_size"],
-    shuffle=True,
+    shuffle=False,
     num_workers=hp_dict["num_workers"],   # parallel data loading
     pin_memory=True  # faster GPU transfer
 )
