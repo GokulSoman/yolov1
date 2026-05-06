@@ -9,6 +9,8 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from  model import YoloV1
 
+from torch.profiler import profile, ProfilerActivity, record_function
+
 import os.path as osp
 
 import wandb
@@ -36,6 +38,7 @@ train_csv = osp.join(dataset_dir, "train.csv")
 test_csv = osp.join(dataset_dir, "test.csv")
 classes_file = osp.join(dataset_dir, "classes.txt")
 
+profile_mode = False
 
 seed = 123
 torch.manual_seed(seed=seed)
@@ -161,6 +164,10 @@ if __name__=="__main__":
     #     )
     # epoch_bars.append(epoch_pbar)
 
+    if profile_mode:
+        activities = [ProfilerActivity.CPU]
+        if torch.cuda.is_available(): activities += [ProfilerActivity.CUDA]
+        prof = profile(activities= activities, record_shapes=True)
     for epoch in range(num_epochs):
 
         # create new progress bar
@@ -173,47 +180,96 @@ if __name__=="__main__":
         #     mininterval=0.5
         # )
         # epoch_bars.append(pbar)
+        cum_metrics = {}
+        im_count = 0
+        t0 = time.time()
+        cum_loss = 0
 
         for batch_x, batch_y in train_dl:
-            t0 = time.time()
+            # t0 = time.time()
+            if global_step == 10:
+                if profile_mode: prof.start()
+            im_count += batch_x.size(0) # count images before moving to gpu
+            with record_function("forward"):
 
-            # set learning rate
-            lr = get_decay_lr(hp_dict, tr_total_steps, global_step)
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr
+                # set learning rate
+                lr = get_decay_lr(hp_dict, tr_total_steps, global_step)
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = lr
 
-            batch_x = batch_x.to(device, non_blocking=True)
-            batch_y = batch_y.to(device, non_blocking=True)
-            with torch.autocast(device_type=device, dtype= torch.bfloat16):
-                out = model(batch_x)
-                loss, metrics = loss_fn(out, batch_y, runlog=run)
-            # import pdb; pdb.set_trace()
-            # print(f"Loss: {loss.item()}")
+                batch_x = batch_x.to(device, non_blocking=True)
+                batch_y = batch_y.to(device, non_blocking=True)
+                with torch.autocast(device_type=device, dtype= torch.bfloat16):
+                    out = model(batch_x)
+                    loss, metrics = loss_fn(out, batch_y, runlog=run)
+                # import pdb; pdb.set_trace()
+                # print(f"Loss: {loss.item()}")
+
+            with record_function("backward"):               
+                optimizer.zero_grad()
+                loss.backward()
+
+                norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+
+            # torch.cuda.synchronize()
+            # t1 = time.time()
+            # dt = (t1-t0)*1000
+            # im_sec = batch_y.shape[0]*1000/dt
+            with record_function("logging"):
+                cum_loss += loss.detach()
+                print(f"epoch: {epoch:3d}, step: {global_step:4d}, lr: {lr:.5f}, norm: {norm:.4f}")
+                    #, dt: {dt:.3f}ms, im_sec: {im_sec:.4f}")
+                    #, loss: {loss.item():.4f}
+                log_train = {"epoch" : epoch,
+                            # "loss/train": loss.item(), 
+                            "lr": lr, 
+                            "step/train" : global_step, 
+                            "norm": norm, 
+                            # "iter_ms/train" : dt, 
+                            # "im_sec/train": im_sec
+                            }
+                
+                # keep metrics in gpu for n iterations (avoid frequent moving)
+                metrics = {f"{k}/train":v.detach() for k,v in metrics.items()}
+                for metric in metrics:
+                    # keep in gpu until n steps
+                    cum_metrics[metric] = cum_metrics.get(metric, 0.0) + metrics[metric]
+                # for k,v in log_train.items():
+                #     writer.add_scalar(k, v, global_step)
+                
+                if global_step % 50 == 0:
+                    # log only per N steps
+                    torch.cuda.synchronize()
+                    t1 = time.time()
+
+                    dt = t1 - t0
+                    # move metrics to cpu
+                    cum_metrics = {k: (v.cpu().item())/50 for k,v in cum_metrics.items()}
+                    # update metrics to log
+                    log_train.update(cum_metrics)
+                    
+                    # use accumulated counts
+                    im_sec = im_count/dt
+
+                    # these are added every 50 steps
+                    log_train["im_sec/train"] = im_sec
+                    log_train["ms_iter/train"] = dt / 50
+                    # cum loss
+                    log_train["loss/train"] = cum_loss.cpu().item() / 50
+
+                    # reset vals
+                    im_count = 0
+                    cum_loss = 0
+                    cum_metrics = {}
+                    # reset time
+                    t0 = time.time()
             
-            optimizer.zero_grad()
-            loss.backward()
-
-            norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-
-            torch.cuda.synchronize()
-            t1 = time.time()
-            dt = (t1-t0)*1000
-            im_sec = batch_y.shape[0]*1000/dt
-            print(f"epoch: {epoch:3d}, step: {global_step:4d}, lr: {lr:.5f}, loss: {loss.item():.4f}, norm: {norm:.4f}, dt: {dt:.3f}ms, im_sec: {im_sec:.4f}")
-            log_train = {"epoch" : epoch,
-                        "loss/train": loss.item(), 
-                        "lr": lr, 
-                        "step/train" : global_step, 
-                        "norm": norm, 
-                        "iter_ms/train" : dt, 
-                        "im_sec/train": im_sec}
-            
-            metrics = {f"{k}/train":v.detach().cpu().item() for k,v in metrics.items()}
-            for k,v in log_train.items():
-                writer.add_scalar(k, v, global_step)
-            run.log({**log_train, **metrics})
+            run.log(log_train)
             global_step += 1
+
+            if global_step == 50 and profile_mode:
+                break
             # pbar.set_postfix(loss=f"{loss.item():.4f}")
             # pbar.update(1)
             # if global_step == 50:
@@ -259,3 +315,8 @@ if __name__=="__main__":
             model.train()
 
     run.finish()
+
+    if profile_mode:
+        prof.stop()
+        print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
