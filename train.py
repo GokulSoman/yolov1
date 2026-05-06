@@ -279,25 +279,26 @@ if __name__=="__main__":
         if (epoch+1) % 3 == 0 or epoch==(num_epochs - 1):
             test_loss = 0.0
             dt = 0.0
-            im_sec = 0.0
+            im_count = 0
             model.eval()
+            t0 = time.time()
             with torch.no_grad():
                 for batch_x, batch_y in test_dl:
-                    t0 = time.time()
+                    im_count += batch_x.size(0)
                     batch_x = batch_x.to(device, non_blocking=True)
                     batch_y = batch_y.to(device, non_blocking=True)
                     with torch.autocast(device_type=device, dtype=torch.bfloat16):
                         out = model(batch_x)
-                        loss, test_metrics = loss_fn(out, batch_y)
-                    test_loss += loss.item()
-                    torch.cuda.synchronize()
-                    t1 = time.time()
-                    dt+= (t1-t0)*1000
-                    im_sec += batch_y.shape[0]*1000/dt
-            test_loss /= test_total_steps
-            dt /= test_total_steps
-            im_sec /= test_total_steps
-            log_test = {"epoch": epoch,"loss/test": test_loss, "step/test" : global_step-1, "iter_ms/test" : dt, "im_sec/test": im_sec}
+                        loss, test_metrics = loss_fn(out, batch_y, runlog=run)
+                    test_loss += loss                    
+                    # dt+= (t1-t0)*1000
+                    # im_sec += batch_y.shape[0]*1000/dt
+            t1 = time.time()        
+            test_loss = test_loss.cpu().item() / test_total_steps
+            dt = t1 - t0
+            im_sec = im_count / dt
+            ms_iter = dt / test_total_steps
+            log_test = {"epoch": epoch,"loss/test": test_loss, "step/test" : global_step-1, "ms_iter/test" : ms_iter, "im_sec/test": im_sec}
             for k,v in log_test.items():
                 writer.add_scalar(k, v, global_step-1)
             test_metrics = {f"{k}/test": v.detach().cpu().item() for k,v in test_metrics.items()}
