@@ -108,6 +108,60 @@ def non_max_suppression(bboxes, iou_threshold, min_score, box_format="corners"):
 
     return out_boxes
 
+# convert from label matrix to bounding box format 
+def predictions_to_bboxes(predictions, S = 7, C = 20, B=2, obj_exists=0.8, class_threshold=0.75):
+    # predictions in shape (N,S,S,C+B*5)
+    # convert to list of bounding boxes with format [class_index, prob_score, x1,y1,x2,y2]
+    #batch_size = predictions.shape[0]
+    predictions = predictions.detach().view(S, S, C + B*5)
+
+    # convert from cell location to image location
+    locs_x = torch.arange(S).repeat(S,1).view(S, S)
+    locs_y = locs_x.transpose(1,2)
+
+    predictions[..., 21] = (predictions[..., 21] + locs_x) / S
+    predictions[..., 26] = (predictions[..., 26] + locs_x) / S
+
+    predictions[..., 22] = (predictions[..., 22] + locs_y) / S
+    predictions[..., 27] = (predictions[..., 27] + locs_y) / S
+
+    best_box = predictions[..., [20,25]].argmax(dim=-1)
+    
+    # make preds into an array of boxes
+    box1_args = [i for i in range(25)]
+    box2_args = [i for i in range(20)] + [25 + i for i in range(5)]
+    #TODO: Choose boxes? or take all preds
+    predictions = torch.cat((predictions[best_box == 0][..., box1_args], 
+                             predictions[best_box==1][..., box2_args])) # (S*S, 25)
+
+
+    # filter top predictiosn based on object exists
+    predictions = predictions[predictions[...,20] > obj_exists] # shape k,25
+
+    # filter based prob of obj provided box exists
+    class_probs_best = predictions[..., :C].max(dim=-1) # shape (k)
+    prob_class = predictions[...,20] * class_probs_best # k
+
+    predictions = predictions[prob_class > class_threshold].view(-1, C + 5) # y,25
+
+    #convert predicitons to bbox
+    # class_id, xmin, ymin, w, h, score
+
+    bboxes = torch.zeros(predictions.shape[0], 6) # y,6
+
+    bboxes[...,0] = predictions[..., :C].argmax(dim=-1)
+    bboxes[...,-1] = prob_class[prob_class > class_threshold]
+    bboxes[...,1:-1] = predictions[..., 21:25] # taking the best box, TODO: make suitable for more than 2 boxes
+
+    
+    #bboxes = []
+    #for i in range(batch_size):
+    #    bboxes.append(non_max_suppression(predictions[i], iou_threshold, threshold))
+    
+    return bboxes
+
+
+
 if __name__ == "__main__":
     a = torch.tensor(2.5 * np.ones((3,4)))
     a[:,2:] = 5
