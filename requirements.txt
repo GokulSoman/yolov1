@@ -1,0 +1,10 @@
+name: torch
+channels:
+  - defaults
+dependencies:
+  - matplotlib
+  - numpy
+  - pandas
+  - tqdm
+  - ipykernel
+prefix: /home/gokul/anaconda3/envs/torch
