@@ -79,16 +79,16 @@ class YoloV1Loss(nn.Module):
 
         ## Loss if no object is present
 
-        # choose random box for no object loss as no target box
-        random_box = torch.randint(0,2, best_box.size())
-
-        no_object_predictions = (1-exists_box) * (
-            (1- random_box) * predictions[..., 20].unsqueeze(-1) +
-            random_box * predictions[..., 25].unsqueeze(-1)
+        no_object_predictions = exists_box * (
+            best_box * predictions[..., 20].unsqueeze(-1) +
+            (1-best_box) * predictions[..., 25].unsqueeze(-1)
         )
 
-        no_object_loss = self.mse(no_object_predictions,
-                    (1-exists_box) * target[..., [20]]).sum(dim=(-1,-2,-3))
+        zero_tensor = torch.zeros_like(exists_box, dtype=predictions.dtype, device=predictions.device)
+
+        no_object_loss = self.mse((1-exists_box) * predictions[..., [20]], zero_tensor).sum(dim=(-1,-2,-3))
+        no_object_loss += self.mse((1-exists_box) * predictions[..., [25]], zero_tensor).sum(dim=(-1,-2,-3))
+        no_object_loss +=  self.mse(no_object_predictions, zero_tensor).sum(dim=(-1,-2,-3))
     
         
         # only for best box
