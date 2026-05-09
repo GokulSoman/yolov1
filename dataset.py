@@ -8,6 +8,8 @@ from torchvision.transforms import transforms, v2, ToPILImage, ToTensor
 from torchvision.io import read_image, decode_image
 import matplotlib.pyplot as plt
 
+import re
+
 test = 0
 
 import torchvision.transforms.functional as F
@@ -41,15 +43,24 @@ def draw_pil_boxes(img, boxes, labels, class_dict):
     w,h = img.size
     draw = ImageDraw.Draw(img)
 
+    # Handle empty boxes
+    if len(boxes) == 0:
+        return img
+
     # Optional: load a better font
     try:
         font = ImageFont.truetype("arial.ttf", 16)
     except:
         font = ImageFont.load_default()
 
-    for box, cls in zip(boxes, labels):
+    for box, label in zip(boxes, labels):
         x1, y1, x2, y2 = box
-        label = f"{cls}"
+        
+        match = re.match(r'(.+?)(\d+\.\d+)$', label)
+
+        assert match, "Unable to extract word from label from bbox drawing"
+
+        cls = match.group(1).strip()
 
         color = class_to_color(class_dict[cls], num_classes=20)
 
