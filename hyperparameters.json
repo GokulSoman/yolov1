@@ -1,9 +1,9 @@
 {
-    "lr": 2e-5,
-    "max_lr": 2e-4,
-    "min_lr": 5e-5,
+    "lr": 1e-3,
+    "max_lr": 1e-2,
+    "min_lr": 1e-4,
     "warm_up_epochs": 5,
-    "saturate_epochs": 95,
+    "saturate_epochs": 110,
     "cosine_lr_decay": true,
     "batch_size": 32,
     "weight_decay": 1e-4,
