@@ -283,63 +283,49 @@ class PascalVOC(torch.utils.data.Dataset):
     #     # #import pdb; pdb.set_trace()
     #     image.show()
 
-    def test_sample(self, index=None):
-        assert self.debug is True, "test sample works only in debug mode"
-        if index is None:
-            index = randint(0, len(self) - 1)
-        image, boxes = self[index]
+    def test_sample(self, index=None, img_bbox=None,  show_image=True):
+        # assert self.debug is True, "test sample works only in debug mode"
 
-        assert len(image[image > 1]) == 0, "Values > 1 in normalized image is not allowed"
-        assert len(image[image < 0]) == 0, "Negative values in normalized image is not allowed"
+        assert (img_bbox is None) != (index is None), "Either img,bbox or index should be provided, and not both"
+
+        if not img_bbox and index is None:
+            index = randint(0, len(self) - 1)
+
+        if img_bbox:
+            image, boxes = img_bbox
+        else:
+            image, boxes = self[index]
+
+        if len(image[image > 1]) == 0: print("Values > 1 in normalized image is not allowed")
+        if len(image[image < 0]) == 0: print("Negative values in normalized image is not allowed")
+        image = image.clip(min=0, max=1)
+        
         # remove normalization
         # image = (image * 255).int()
         image = ToPILImage()(image) # back to 0-255
         w,h = image.size
 
         assert w==h==self.inp_size, "Values are different from model input"
-        boxes[:,1:] *= w
-
-        # #import pdb; pdb.set_trace()
-
-        # boxes[:,3:] += boxes[:,1:2] #x,y,w,h -> xmin, ymin, xmax, ymax
-        #  move labels from grid to image
-        # out should be b,5 , where n is num_boxes
-        # 5 values are x_mid, y_mid, w, h
-        # boxes = torch.zeros( (len(label[label[..., 20] == 1]), 5))
-        # box_id = 0
-        # for i in range(self.S):
-        #     for j in range(self.S):
-        #         if label[i,j,20] == 0:
-        #             # no box here
-        #             continue
-        #         # class
-        #         boxes[box_id][0] = label[i,j,:20].flatten().argmax()
-        #         boxes[box_id][1:] = label[i,j,21:]
-        #         boxes[box_id][1] = (boxes[box_id][1] + j) / self.S
-        #         boxes[box_id][2] = (boxes[box_id][2] + i) / self.S
-
-        #         box_id += 1
         
-        # # convert to xmin, ymin, x_max, y_max
-        # #import pdb; pdb.set_trace()
-        # w_half, h_half = boxes[:,3], boxes[:,4]
-        # boxes[:,1] -= w_half
-        # boxes[:,2] -= h_half
-        # boxes[:,3] += w_half
-        # boxes[:,4] += h_half
+        # Handle case where no boxes detected
+        if len(boxes) == 0:
+            print("  No boxes to draw")
+            image = draw_pil_boxes(image, [], [], self.class2id)
+            if show_image:
+                plt.figure(f"{index}" if index else "Prediction") 
+                plt.imshow(image)
+                plt.axis("off")
+                plt.show()
+            return image, boxes
+        
+        boxes[:,1:5] *= w
 
-        # # scale to image width and height
-
-        # boxes[:,[1,3]] *= w
-        # boxes[:,[2,4]] *= h
-
-        # # add padding
-        # pad_left, pad_top = padding
-        # boxes[:[1,3]] += pad_left
-        # boxes[:,[2,4]] += pad_top
 
         classes = boxes[:,0].int().tolist()
         labels = [self.id2class[x] for x in classes]
+        scores = boxes[:,5].tolist()
+        if img_bbox:
+            labels = [x + f"{y:.2f}" for (x,y) in zip(labels, scores)]
         w_half, h_half = boxes[:,3]/2, boxes[:,4]/2
         
         boxes[:,3] = boxes[:,1] + w_half # xmax = xmid + w/2
@@ -347,7 +333,7 @@ class PascalVOC(torch.utils.data.Dataset):
         boxes[:,1] -= w_half # xmin = xmid - w/2
         boxes[:,2] -= h_half #ymin = ymid - h/2
 
-        boxes = boxes[:,1:].int().clip(min=0,max=w-1).tolist() # 0-447
+        boxes = boxes[:,1:5].int().clip(min=0,max=w-1).tolist() # 0-447
         
         # pil_boxes = [((xmin, ymin),(xmax,ymax)) for (xmin,ymin,xmax,ymax) in boxes]
         # draw = ImageDraw.Draw(image)
@@ -359,10 +345,11 @@ class PascalVOC(torch.utils.data.Dataset):
 
         image = draw_pil_boxes(image, boxes, labels, self.class2id)
         # image.show()
-        plt.figure(f"{index}") 
-        plt.imshow(image)
-        plt.axis("off")
-        plt.show()
+        if show_image:
+            plt.figure(f"{index}" if index else "Prediction") 
+            plt.imshow(image)
+            plt.axis("off")
+            plt.show()
         return image, boxes
 if __name__ == "__main__":
     dataset_dir = "/home/gokul/datasets/pascal_voc"
