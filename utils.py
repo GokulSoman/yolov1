@@ -110,14 +110,13 @@ def non_max_suppression(bboxes, iou_threshold, min_score, box_format="corners"):
 
 # convert from label matrix to bounding box format 
 def predictions_to_bboxes(predictions, S = 7, C = 20, B=2, obj_exists=0.8, class_threshold=0.75):
-    # predictions in shape (N,S,S,C+B*5)
-    # convert to list of bounding boxes with format [class_index, prob_score, x1,y1,x2,y2]
-    #batch_size = predictions.shape[0]
+    # predictions in shape (S,S,C+B*5)
+    # convert to list of bounding boxes with format [class_index, x_center, y_center, w, h, score]
     predictions = predictions.detach().view(S, S, C + B*5)
 
     # convert from cell location to image location
-    locs_x = torch.arange(S).repeat(S,1).view(S, S)
-    locs_y = locs_x.transpose(1,2)
+    locs_x = torch.arange(S, device=predictions.device).repeat(S,1).view(S, S)
+    locs_y = locs_x.T
 
     predictions[..., 21] = (predictions[..., 21] + locs_x) / S
     predictions[..., 26] = (predictions[..., 26] + locs_x) / S
@@ -134,29 +133,33 @@ def predictions_to_bboxes(predictions, S = 7, C = 20, B=2, obj_exists=0.8, class
     predictions = torch.cat((predictions[best_box == 0][..., box1_args], 
                              predictions[best_box==1][..., box2_args])) # (S*S, 25)
 
-
-    # filter top predictiosn based on object exists
-    predictions = predictions[predictions[...,20] > obj_exists] # shape k,25
+    # filter top predictions based on object exists
+    objness_mask = predictions[...,20] > obj_exists
+    predictions = predictions[objness_mask] # shape (k, 25)
+    
+    if predictions.shape[0] == 0:
+        # No predictions pass the objectness threshold
+        return torch.zeros((0, 6))
 
     # filter based prob of obj provided box exists
-    class_probs_best = predictions[..., :C].max(dim=-1) # shape (k)
+    class_probs_best = predictions[..., :C].max(dim=-1).values # shape (k,)
     prob_class = predictions[...,20] * class_probs_best # k
 
-    predictions = predictions[prob_class > class_threshold].view(-1, C + 5) # y,25
-
-    #convert predicitons to bbox
-    # class_id, xmin, ymin, w, h, score
-
-    bboxes = torch.zeros(predictions.shape[0], 6) # y,6
-
-    bboxes[...,0] = predictions[..., :C].argmax(dim=-1)
-    bboxes[...,-1] = prob_class[prob_class > class_threshold]
-    bboxes[...,1:-1] = predictions[..., 21:25] # taking the best box, TODO: make suitable for more than 2 boxes
-
+    # Apply threshold and collect indices for proper alignment
+    class_mask = prob_class > class_threshold
+    predictions_filtered = predictions[class_mask] # (m, 25)
+    prob_class_filtered = prob_class[class_mask]  # (m,)
     
-    #bboxes = []
-    #for i in range(batch_size):
-    #    bboxes.append(non_max_suppression(predictions[i], iou_threshold, threshold))
+    if predictions_filtered.shape[0] == 0:
+        # No predictions pass the class threshold
+        return torch.zeros((0, 6))
+
+    # convert predictions to bbox format
+    # format: [class_id, x_center, y_center, w, h, score]
+    bboxes = torch.zeros(predictions_filtered.shape[0], 6)
+    bboxes[...,0] = predictions_filtered[..., :C].argmax(dim=-1)  # class index
+    bboxes[...,1:5] = predictions_filtered[..., 21:25]  # x, y, w, h
+    bboxes[...,-1] = prob_class_filtered  # confidence score
     
     return bboxes
 
