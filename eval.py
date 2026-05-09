@@ -26,8 +26,11 @@ if __name__ == "__main__":
     
     # dataloader
 
+    from torch.utils.data import Subset
+    sub_indices = [i for i in range(10)]
+
     test_dl = DataLoader(
-                test_data[:10],
+                Subset(test_data, sub_indices),
                 batch_size=1,
                 shuffle=False,
                 num_workers=0, 
@@ -40,7 +43,7 @@ if __name__ == "__main__":
     print("Loading model...")
     model = YoloV1(split_size=7, num_boxes=2, num_classes=20).to(device)
     # compile - DISABLED FOR DEBUGGING
-    # model = torch.compile(model)
+    model = torch.compile(model)
 
     print("Loading checkpoint...")
     model_dict = torch.load("model_e139_loss_5_979.pth", map_location=device)
@@ -62,7 +65,7 @@ if __name__ == "__main__":
             # with torch.autocast(device_type=device, dtype=torch.bfloat16):
             out = model(batch_x) 
             for i in range(batch_x.size(0)):
-                bboxes = predictions_to_bboxes(out[i].cpu(), obj_exists=0.3, class_threshold=0.4)
+                bboxes = predictions_to_bboxes(out[i].cpu(), obj_exists=0.1, class_threshold=0.1)
                 print(f"\n[Image {count}] Detected {len(bboxes)} bboxes")
                 if len(bboxes) > 0:
                     print(f"  Bbox shape: {bboxes.shape}")
