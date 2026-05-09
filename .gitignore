@@ -6,3 +6,4 @@ wandb
 runs
 .vscode
 **/*pth
+eval_results
